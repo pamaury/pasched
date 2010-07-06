@@ -21,7 +21,8 @@ typedef pasched::schedule_dep sched_dep_t;
 typedef std::set< sched_unit_ptr_t > sched_unit_set_t;
 typedef std::vector< sched_unit_ptr_t > sched_unit_vec_t;
 typedef std::vector< sched_dep_t > sched_dep_vec_t;
-typedef std::set< unsigned > var_set_t;
+typedef sched_dep_t::reg_t sched_reg_t;
+typedef std::set< sched_reg_t > reg_set_t;
 
 /**
  * I/O functions
@@ -352,30 +353,30 @@ sched_unit_set_t get_immediate_rechable_set(const sched_dag_t& dag,
     return s;
 }
 
-var_set_t get_var_create_set(const sched_dag_t& dag,
+reg_set_t get_var_create_set(const sched_dag_t& dag,
     sched_unit_ptr_t unit)
 {
-    var_set_t s;
+    reg_set_t s;
     for(size_t i = 0; i < dag.get_succs(unit).size(); i++)
         if(dag.get_succs(unit)[i].kind() == sched_dep_t::data_dep)
             s.insert(dag.get_succs(unit)[i].reg());
     return s;
 }
 
-var_set_t get_var_use_set(const sched_dag_t& dag,
+reg_set_t get_var_use_set(const sched_dag_t& dag,
     sched_unit_ptr_t unit)
 {
-    var_set_t s;
+    reg_set_t s;
     for(size_t i = 0; i < dag.get_preds(unit).size(); i++)
         if(dag.get_preds(unit)[i].kind() == sched_dep_t::data_dep)
             s.insert(dag.get_preds(unit)[i].reg());
     return s;
 }
 
-var_set_t get_var_destroy_set(const sched_dag_t& dag,
+reg_set_t get_var_destroy_set(const sched_dag_t& dag,
     sched_unit_ptr_t unit)
 {
-    var_set_t s;
+    reg_set_t s;
     for(size_t i = 0; i < dag.get_preds(unit).size(); i++)
     {
         const sched_dep_t& dep = dag.get_preds(unit)[i];
@@ -1664,9 +1665,9 @@ void smart_fuse_two_units(pasched::schedule_dag& dag)
         {
             sched_unit_ptr_t unit = dag.get_units()[u];
 
-            var_set_t vc = get_var_create_set(dag, unit);
-            var_set_t vu = get_var_use_set(dag, unit);
-            var_set_t vd = get_var_destroy_set(dag, unit);
+            reg_set_t vc = get_var_create_set(dag, unit);
+            reg_set_t vu = get_var_use_set(dag, unit);
+            reg_set_t vd = get_var_destroy_set(dag, unit);
             sched_unit_set_t ipreds = get_immediate_rechable_set(dag, unit, rf_follow_preds);
             sched_unit_set_t isuccs = get_immediate_rechable_set(dag, unit, rf_follow_succs);
 
