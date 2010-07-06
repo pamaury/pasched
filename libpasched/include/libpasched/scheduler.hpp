@@ -27,21 +27,6 @@ class scheduler
 
 /**
  * Mimimum Register Instruction Scheduling
- * optimal solution using ilp formulation
- */
-class mris_ilp_scheduler : public scheduler
-{
-    public:
-    mris_ilp_scheduler(const schedule_dag& sd);
-    virtual ~mris_ilp_scheduler();
-
-    virtual void schedule(schedule_chain& sc);
-
-    protected:
-};
-
-/**
- * Mimimum Register Instruction Scheduling
  * optimal solution using an alternative ilp
  * formulation
  */
