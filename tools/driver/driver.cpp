@@ -353,7 +353,7 @@ sched_unit_set_t get_immediate_rechable_set(const sched_dag_t& dag,
     return s;
 }
 
-reg_set_t get_var_create_set(const sched_dag_t& dag,
+reg_set_t get_reg_create_set(const sched_dag_t& dag,
     sched_unit_ptr_t unit)
 {
     reg_set_t s;
@@ -363,7 +363,7 @@ reg_set_t get_var_create_set(const sched_dag_t& dag,
     return s;
 }
 
-reg_set_t get_var_use_set(const sched_dag_t& dag,
+reg_set_t get_reg_use_set(const sched_dag_t& dag,
     sched_unit_ptr_t unit)
 {
     reg_set_t s;
@@ -373,7 +373,7 @@ reg_set_t get_var_use_set(const sched_dag_t& dag,
     return s;
 }
 
-reg_set_t get_var_destroy_set(const sched_dag_t& dag,
+reg_set_t get_reg_destroy_set(const sched_dag_t& dag,
     sched_unit_ptr_t unit)
 {
     reg_set_t s;
@@ -1579,8 +1579,8 @@ void fuse_unit_to_successor(pasched::schedule_dag& dag, sched_unit_ptr_t unit)
     #endif
 
     /* fixme: computation might ne wrong */
-    unsigned vc_size = get_var_create_set(dag, unit).size();
-    unsigned vu_size = get_var_use_set(dag, succ).size();
+    unsigned vc_size = get_reg_create_set(dag, unit).size();
+    unsigned vu_size = get_reg_use_set(dag, succ).size();
     c->set_internal_register_pressure(
         std::max(vu_size - vc_size + unit->internal_register_pressure(),
         std::max(vu_size,
@@ -1630,8 +1630,8 @@ void fuse_unit_to_predecessor(pasched::schedule_dag& dag, sched_unit_ptr_t unit)
     }
 
     /* fixme: computation might be wrong */
-    unsigned vc_size = get_var_create_set(dag, pred).size();
-    unsigned vd_size = get_var_destroy_set(dag, unit).size();
+    unsigned vc_size = get_reg_create_set(dag, pred).size();
+    unsigned vd_size = get_reg_destroy_set(dag, unit).size();
     c->set_internal_register_pressure(
         std::max(pred->internal_register_pressure(),
         std::max(vc_size,
@@ -1665,9 +1665,9 @@ void smart_fuse_two_units(pasched::schedule_dag& dag)
         {
             sched_unit_ptr_t unit = dag.get_units()[u];
 
-            reg_set_t vc = get_var_create_set(dag, unit);
-            reg_set_t vu = get_var_use_set(dag, unit);
-            reg_set_t vd = get_var_destroy_set(dag, unit);
+            reg_set_t vc = get_reg_create_set(dag, unit);
+            reg_set_t vu = get_reg_use_set(dag, unit);
+            reg_set_t vd = get_reg_destroy_set(dag, unit);
             sched_unit_set_t ipreds = get_immediate_rechable_set(dag, unit, rf_follow_preds);
             sched_unit_set_t isuccs = get_immediate_rechable_set(dag, unit, rf_follow_succs);
 
