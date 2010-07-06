@@ -1456,33 +1456,6 @@ void split_def_use_dom_use_deps(pasched::schedule_dag& dag)
 }
 
 /**
- * Run the MRIS ILP scheduler on the graph and adds the order links
- * in order to force a chain order.
- */
-void mris_ilp_schedule(pasched::schedule_dag& dag)
-{
-    pasched::mris_ilp_scheduler mris(dag);
-    pasched::generic_schedule_chain sc;
-
-    mris.schedule(sc);
-
-    //std::cout << "-==== Schedule ====-\n";
-    /*
-    for(size_t i = 0; i < sc.get_units().size(); i++)
-        std::cout << "(" << std::setw(2) << i << ") " << sc.get_units()[i]->to_string() << "\n";
-    */
-    /* add order edges to force chain order in the original graph */
-    for(size_t i = 0; (i + 1) < sc.get_units().size(); i++)
-    {
-        sched_dep_t d;
-        d.set_from(sc.get_units()[i]);
-        d.set_to(sc.get_units()[i + 1]);
-        d.set_kind(sched_dep_t::order_dep);
-        dag.add_dependency(d);
-    }
-}
-
-/**
  * Run the alternative MRIS ILP scheduler on the graph and adds the order links
  * in order to force a chain order.
  */
@@ -1681,134 +1654,6 @@ void fuse_unit_to_predecessor(pasched::schedule_dag& dag, sched_unit_ptr_t unit)
     dag.remove_unit(unit);
     dag.remove_unit(pred);
     dag.add_dependencies(to_add);
-}
-
-/**
- * A SRISRO(Single Register In-single Register Out) is a unit which
- * only have one input dependency which a data one and one or several
- * output dependencies but which create only one register.
- * Is it cheap if it's internal register pressure is 0 or 1.
- * - If the unit only has one successor, it can safely be fused to its
- *   successor
- * - If the predecessor of the unit has only one use for the register
- *   which is used in the unit, it can safely be fused to its predecessor
- */
-void fuse_srisro_cheap_units(pasched::schedule_dag& dag)
-{
-    while(true)
-    {
-        for(size_t u = 0; u < dag.get_units().size(); u++)
-        {
-            sched_unit_ptr_t unit = dag.get_units()[u];
-            /* Check SRISRO */
-            /* - one predecessor only */
-            if(dag.get_preds(unit).size() != 1)
-                continue;
-            /* - predecessor must be data */
-            if(dag.get_preds(unit)[0].kind() != sched_dep_t::data_dep)
-                continue;
-            /* - one successor only */
-            if(dag.get_succs(unit).size() != 1)
-                continue;
-            /* - successor must be data */
-            if(dag.get_succs(unit)[0].kind() != sched_dep_t::data_dep)
-                continue;
-            /* - unit is the only use of input data ? */
-            sched_unit_ptr_t pred = dag.get_preds(unit)[0].from();
-            unsigned reg = dag.get_preds(unit)[0].reg();
-            bool only_user = true;
-            for(size_t i =0; i < dag.get_succs(pred).size(); i++)
-                if(dag.get_succs(pred)[i].kind() == sched_dep_t::data_dep &&
-                        dag.get_succs(pred)[i].reg() == reg &&
-                        dag.get_succs(pred)[i].to() != unit)
-                    only_user = false;
-            /* - cheap condition
-             *   - if only user: IRP <= 1
-             *   - if not only user: IRP = 0 */
-            if(only_user && unit->internal_register_pressure() > 1)
-                continue;
-            if(!only_user && unit->internal_register_pressure() > 0)
-                continue;
-            fuse_unit_to_successor(dag, unit);
-            goto Lgraph_changed;
-        }
-
-        /* no change, stop */
-        break;
-        Lgraph_changed:
-        continue;
-    }
-}
-
-/**
- * A NRISRO(No register In-Single register Out) is a unit which have no
- * input data dependencies and one one output dependency which is a data
- * one. Is it cheap if it's internal register pressure is 0 or 1.
- * In this case, the unit can safely be fused to its successor.
- */
-void fuse_nrisro_cheap_units(pasched::schedule_dag& dag)
-{
-    while(true)
-    {
-        for(size_t u = 0; u < dag.get_units().size(); u++)
-        {
-            sched_unit_ptr_t unit = dag.get_units()[u];
-            /* Check NRISRO */
-            /* - no register in */
-            if(get_immediate_rechable_set(dag, unit, rf_follow_preds_data).size() != 0)
-                continue;
-            /* - one successor only */
-            if(dag.get_succs(unit).size() != 1)
-                continue;
-            /* - one data successor only */
-            if(dag.get_succs(unit)[0].kind() != sched_dep_t::data_dep)
-                continue;
-            /* Check cheap condition */
-            if(unit->internal_register_pressure() > 1)
-                continue;
-
-            /* fuse unit to successor */
-            fuse_unit_to_successor(dag, unit);
-            goto Lgraph_changed;
-        }
-
-        /* no change, stop */
-        break;
-        Lgraph_changed:
-        continue;
-    }
-}
-
-void fuse_srinro_cheap_units(pasched::schedule_dag& dag)
-{
-    while(true)
-    {
-        for(size_t u = 0; u < dag.get_units().size(); u++)
-        {
-            sched_unit_ptr_t unit = dag.get_units()[u];
-            /* Check NRISRO */
-            /* - no register out */
-            if(get_immediate_rechable_set(dag, unit, rf_follow_succs_data).size() != 0)
-                continue;
-            /* - one predecessor only */
-            if(dag.get_preds(unit).size() != 1)
-                continue;
-            /* - one data predecessor only */
-            if(dag.get_preds(unit)[0].kind() != sched_dep_t::data_dep)
-                continue;
-            /* Check cheap condition */
-            if(unit->internal_register_pressure() > 0)
-                continue;
-            /* fuse unit to predecessor */
-            fuse_unit_to_predecessor(dag, unit);
-            goto Lgraph_changed;
-        }
-
-        /* no change, stop */
-        break;
-        Lgraph_changed:
-        continue;
-    }
 }
 
 void smart_fuse_two_units(pasched::schedule_dag& dag)
@@ -2164,12 +2009,8 @@ pass_t passes[] =
     //{"collapse-sese-conservative", "Conservatively collapse single-entry single-ext subgraphs", &collapse_sese_conservative},
     //{"collapse-sese-aggressive", "Aggressively collapse single-entry single-exit subgraphs", &collapse_sese_aggressive},
     //{"collapse-oeoe-conservative", "Conservatively collapse order-entries order-exits subgraphs", &collapse_oeoe_conservative},
-    //{"mris-ilp-schedule", "Schedule it with the MRIS ILP scheduler", &mris_ilp_schedule},
     {"mris-ilp-schedule-alt", "Schedule it with the alternative MRIS ILP scheduler", &mris_ilp_schedule_alt},
     {"split-def-use-dom-use-deps", "Split edges from a def to a use which dominates all other uses", &split_def_use_dom_use_deps},
-    //{"fuse-srisro-cheap-units", "Fuse single-register-in-single-register-out cheap units", &fuse_srisro_cheap_units},
-    //{"fuse-nrisro-cheap-units", "Fuse no-register-in-single-register-out cheap units", &fuse_nrisro_cheap_units},
-    //{"fuse-srinro-cheap-units", "Fuse single-register-no-register-out cheap units", &fuse_srinro_cheap_units},
     {"strip-redundant-data-deps", "", &strip_redundant_data_deps},
     {"smart-fuse-two-units", "", &smart_fuse_two_units},
     {"break-symmetrical-branch-merge", "", &break_symmetrical_branch_merge},
@@ -2181,7 +2022,7 @@ pass_t passes[] =
  */
 void display_usage()
 {
-    std::cout << "usage: conv <fmt> <input> <fmt> <output> [<pass 1> <pass 2> ...]\n";
+    std::cout << "usage: driver <fmt> <input> <fmt> <output> [<pass 1> <pass 2> ...]\n";
     std::cout << "Formats:\n";
     size_t max_size = 0;
     for(int i = 0; formats[i].name != 0; i++)
