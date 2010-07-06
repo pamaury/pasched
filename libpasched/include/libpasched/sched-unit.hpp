@@ -18,20 +18,22 @@ class schedule_dep
         order_dep // other: memory, artificial, ...
     };
 
+    typedef unsigned reg_t;
+
     inline schedule_dep()
         :m_from(0), m_to(0), m_kind(order_dep), m_reg(0) {}
 
     inline schedule_dep(const schedule_unit *from, const schedule_unit *to, dep_kind kind)
         :m_from(from), m_to(to), m_kind(kind), m_reg(0) {}
 
-    inline schedule_dep(const schedule_unit *from, const schedule_unit *to, dep_kind kind, unsigned reg)
+    inline schedule_dep(const schedule_unit *from, const schedule_unit *to, dep_kind kind, reg_t reg)
         :m_from(from), m_to(to), m_kind(kind), m_reg(reg) {}
 
     inline dep_kind kind() const { return m_kind; }
     inline void set_kind(dep_kind k) { m_kind = k; }
 
-    inline unsigned reg() const { return m_reg; }
-    inline void set_reg(unsigned r) { m_reg = r; }
+    inline reg_t reg() const { return m_reg; }
+    inline void set_reg(reg_t r) { m_reg = r; }
 
     inline const schedule_unit *from() const { return m_from; }
     inline void set_from(const schedule_unit *u) { m_from = u; }
@@ -51,7 +53,7 @@ class schedule_dep
     const schedule_unit *m_from;
     const schedule_unit *m_to;
     dep_kind m_kind;
-    unsigned m_reg; // the register for dependencies, 0 otherwise (memory, artificial, ...)
+    reg_t m_reg; // the register for dependencies, 0 otherwise (memory, artificial, ...)
 };
 
 class schedule_unit
