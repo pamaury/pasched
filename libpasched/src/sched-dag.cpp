@@ -1,6 +1,7 @@
 #include "sched-dag.hpp"
 #include "tools.hpp"
 #include <stdexcept>
+#include <queue>
 
 //#define AUTO_CHECK_CONSISTENCY
 
@@ -32,6 +33,53 @@ void schedule_dag::remove_units(const std::vector< const schedule_unit * >& unit
 {
     for(size_t i = 0; i < units.size(); i++)
         remove_unit(units[i]);
+}
+
+std::set< const schedule_unit * > schedule_dag::get_reachable(const schedule_unit *unit,
+    unsigned flags)
+{
+    std::set< const schedule_unit * > s;
+    std::queue< const schedule_unit * > q;
+
+    q.push(unit);
+
+    while(!q.empty())
+    {
+        const schedule_unit * u = q.front();
+        q.pop();
+        /* skip unit if already in reachable set */
+        if(s.find(u) != s.end())
+            continue;
+        /* insert it in the list if it's not the intial unit or if
+         * the rf_include_unit flag was specified */
+        if((flags & rf_include_unit) || u != unit)
+            s.insert(u);
+        /* stop here if user asked for immediate neighbourhood and
+         * the unit is not the intial one */
+        if((flags & rf_immediate) && u != unit)
+            continue;
+
+        /* propagate to children */
+        for(size_t i = 0; i < get_preds(u).size(); i++)
+        {
+            const schedule_dep& d = get_preds(u)[i];
+            if(d.kind() == schedule_dep::data_dep && (flags & rf_follow_preds_data))
+                q.push(d.from());
+            else if(d.kind() == schedule_dep::order_dep && (flags & rf_follow_preds_order))
+                q.push(d.from());
+        }
+
+        for(size_t i = 0; i < get_succs(u).size(); i++)
+        {
+            const schedule_dep& d = get_succs(u)[i];
+            if(d.kind() == schedule_dep::data_dep && (flags & rf_follow_succs_data))
+                q.push(d.to());
+            else if(d.kind() == schedule_dep::order_dep && (flags & rf_follow_succs_order))
+                q.push(d.to());
+        }
+    }
+
+    return s;
 }
 
 /**

@@ -145,145 +145,6 @@ class chain_schedule_unit : public pasched::schedule_unit
     std::vector< const schedule_unit * > m_chain;
 };
 
-enum
-{
-    rf_follow_preds_order = 1 << 0,
-    rf_follow_preds_data = 1 << 1,
-    rf_follow_preds = rf_follow_preds_order | rf_follow_preds_data,
-    rf_follow_succs_order = 1 << 2,
-    rf_follow_succs_data = 1 << 3,
-    rf_follow_succs = rf_follow_succs_order | rf_follow_succs_data,
-    rf_include_unit = 1 << 4,
-    rf_include_block = 1 << 5 /* only for _block variant */
-};
-
-/**
- * Helper function that compute the set of reachable units in a DAG
- */
-sched_unit_set_t get_reachable(
-    const pasched::schedule_dag& dag,
-    sched_unit_ptr_t unit, unsigned flags)
-{
-    sched_unit_set_t s;
-    std::queue< sched_unit_ptr_t > q;
-
-    q.push(unit);
-
-    while(!q.empty())
-    {
-        sched_unit_ptr_t u = q.front();
-        q.pop();
-        if(s.find(u) != s.end())
-            continue;
-        if((flags & rf_include_unit) || u != unit)
-            s.insert(u);
-
-        for(size_t i = 0; i < dag.get_preds(u).size(); i++)
-        {
-            const sched_dep_t& d = dag.get_preds(u)[i];
-            if(d.kind() == sched_dep_t::data_dep && (flags & rf_follow_preds_data))
-                q.push(d.from());
-            else if(d.kind() == sched_dep_t::order_dep && (flags & rf_follow_preds_order))
-                q.push(d.from());
-        }
-
-        for(size_t i = 0; i < dag.get_succs(u).size(); i++)
-        {
-            const sched_dep_t& d = dag.get_succs(u)[i];
-            if(d.kind() == sched_dep_t::data_dep && (flags & rf_follow_succs_data))
-                q.push(d.to());
-            else if(d.kind() == sched_dep_t::order_dep && (flags & rf_follow_succs_order))
-                q.push(d.to());
-        }
-    }
-
-    return s;
-}
-
-/**
- * Helper function that compute the set of reachable units in a DAG
- * but which blocks propagation if it encounters a specified node
- */
-sched_unit_set_t get_reachable_block(
-    const pasched::schedule_dag& dag,
-    sched_unit_ptr_t unit,
-    sched_unit_ptr_t block,
-    unsigned flags)
-{
-    sched_unit_set_t s;
-    std::queue< sched_unit_ptr_t > q;
-
-    q.push(unit);
-
-    while(!q.empty())
-    {
-        sched_unit_ptr_t u = q.front();
-        q.pop();
-        if(s.find(u) != s.end())
-            continue;
-        if(u == block)
-        {
-            if(flags & rf_include_block)
-                s.insert(u);
-            continue;
-        }
-        if((flags & rf_include_unit) || u != unit)
-            s.insert(u);
-
-        for(size_t i = 0; i < dag.get_preds(u).size(); i++)
-        {
-            const sched_dep_t& d = dag.get_preds(u)[i];
-            if(d.kind() == sched_dep_t::data_dep && (flags & rf_follow_preds_data))
-                q.push(d.from());
-            else if(d.kind() == sched_dep_t::order_dep && (flags & rf_follow_preds_order))
-                q.push(d.from());
-        }
-
-        for(size_t i = 0; i < dag.get_succs(u).size(); i++)
-        {
-            const sched_dep_t& d = dag.get_succs(u)[i];
-            if(d.kind() == sched_dep_t::data_dep && (flags & rf_follow_succs_data))
-                q.push(d.to());
-            else if(d.kind() == sched_dep_t::order_dep && (flags & rf_follow_succs_order))
-                q.push(d.to());
-        }
-    }
-
-    return s;
-}
-
-/**
- * Get the set of successors of a unit
- */
-sched_unit_set_t get_immediate_rechable_set(const sched_dag_t& dag,
-    sched_unit_ptr_t unit, unsigned flags)
-{
-    sched_unit_set_t s;
-    
-    for(size_t i = 0; i < dag.get_preds(unit).size(); i++)
-    {
-        const sched_dep_t& dep = dag.get_preds(unit)[i];
-        if((flags & rf_follow_preds_data) && dep.kind() == sched_dep_t::data_dep)
-            s.insert(dep.from());
-        else if((flags & rf_follow_preds_order) && dep.kind() == sched_dep_t::order_dep)
-            s.insert(dep.from());
-    }
-
-    for(size_t i = 0; i < dag.get_succs(unit).size(); i++)
-    {
-        const sched_dep_t& dep = dag.get_succs(unit)[i];
-        if((flags & rf_follow_succs_data) && dep.kind() == sched_dep_t::data_dep)
-            s.insert(dep.to());
-        else if((flags & rf_follow_succs_order) && dep.kind() == sched_dep_t::order_dep)
-            s.insert(dep.to());
-    }
-
-    if(flags & rf_include_unit)
-        s.insert(unit);
-    
-    return s;
-}
-
 reg_set_t get_reg_create_set(const sched_dag_t& dag,
     sched_unit_ptr_t unit)
 {
@@ -375,8 +236,8 @@ void strip_useless_order_deps(pasched::schedule_dag& dag)
     /* Fill path */
     for(size_t u = 0; u < n; u++)
     {
-        sched_unit_set_t reach = get_reachable(dag, units[u],
-            rf_follow_succs | rf_include_unit);
+        sched_unit_set_t reach = dag.get_reachable(units[u],
+            sched_dag_t::rf_follow_succs | sched_dag_t::rf_include_unit);
         sched_unit_set_t::iterator it = reach.begin();
         
         for(; it != reach.end(); ++it)
@@ -550,8 +411,8 @@ void split_merge_branch_units_conservative(pasched::schedule_dag& dag)
                 dag.get_succs(dag.get_units()[u]).size() == 0)
             continue;
         
-        sched_unit_set_t pr = get_reachable(dag, dag.get_units()[u], rf_follow_preds);
-        sched_unit_set_t sr = get_reachable(dag, dag.get_units()[u], rf_follow_succs);
+        sched_unit_set_t pr = dag.get_reachable(dag.get_units()[u], sched_dag_t::rf_follow_preds);
+        sched_unit_set_t sr = dag.get_reachable(dag.get_units()[u], sched_dag_t::rf_follow_succs);
 
         if((sr.size() + pr.size() + 1) != dag.get_units().size())
             continue;
@@ -632,8 +493,8 @@ void split_def_use_dom_use_deps(pasched::schedule_dag& dag)
     /* Fill path */
     for(size_t u = 0; u < n; u++)
     {
-        sched_unit_set_t reach = get_reachable(dag, units[u],
-            rf_follow_succs | rf_include_unit);
+        sched_unit_set_t reach = dag.get_reachable(units[u],
+            sched_dag_t::rf_follow_succs | sched_dag_t::rf_include_unit);
         sched_unit_set_t::iterator it = reach.begin();
         for(; it != reach.end(); ++it)
             path[u][name_map[*it]] = true;
@@ -812,7 +673,7 @@ void unique_reg_ids(pasched::schedule_dag& dag)
  */
 void fuse_unit_to_successor(pasched::schedule_dag& dag, sched_unit_ptr_t unit)
 {
-    if(get_immediate_rechable_set(dag, unit, rf_follow_succs).size() != 1)
+    if(dag.get_reachable(unit, sched_dag_t::rf_follow_succs | sched_dag_t::rf_immediate).size() != 1)
         throw std::runtime_error("fuse_unit_to_successor called with invalid parameters");
     sched_unit_ptr_t succ = dag.get_succs(unit)[0].to();
 
@@ -885,7 +746,7 @@ void fuse_unit_to_successor(pasched::schedule_dag& dag, sched_unit_ptr_t unit)
 
 void fuse_unit_to_predecessor(pasched::schedule_dag& dag, sched_unit_ptr_t unit)
 {
-    if(get_immediate_rechable_set(dag, unit, rf_follow_preds).size() != 1)
+    if(dag.get_reachable(unit, sched_dag_t::rf_follow_preds | sched_dag_t::rf_immediate).size() != 1)
         throw std::runtime_error("fuse_unit_to_predecessor called with invalid parameters");
     sched_unit_ptr_t pred = dag.get_preds(unit)[0].from();
 
@@ -959,8 +820,8 @@ void smart_fuse_two_units(pasched::schedule_dag& dag)
             reg_set_t vc = get_reg_create_set(dag, unit);
             reg_set_t vu = get_reg_use_set(dag, unit);
             reg_set_t vd = get_reg_destroy_set(dag, unit);
-            sched_unit_set_t ipreds = get_immediate_rechable_set(dag, unit, rf_follow_preds);
-            sched_unit_set_t isuccs = get_immediate_rechable_set(dag, unit, rf_follow_succs);
+            sched_unit_set_t ipreds = dag.get_reachable(unit, sched_dag_t::rf_follow_preds | sched_dag_t::rf_immediate);
+            sched_unit_set_t isuccs = dag.get_reachable(unit, sched_dag_t::rf_follow_succs | sched_dag_t::rf_immediate);
 
             /*
             std::cout << "Unit: " << unit << "\n";
@@ -1097,22 +958,22 @@ void break_symmetrical_branch_merge(pasched::schedule_dag& dag)
         sched_unit_set_t preds_order_succs;
         sched_unit_set_t preds_preds;
         unsigned irp = 0;
-        sched_unit_set_t preds = get_immediate_rechable_set(dag, unit, rf_follow_preds_data);
+        sched_unit_set_t preds = dag.get_reachable(unit, sched_dag_t::rf_follow_preds_data | sched_dag_t::rf_immediate);
 
         if(preds.size() < 2)
             continue;
-        if(get_immediate_rechable_set(dag, unit, rf_follow_preds_order).size() != 0)
+        if(dag.get_reachable(unit, sched_dag_t::rf_follow_preds_order | sched_dag_t::rf_immediate).size() != 0)
             continue;
 
         for(sched_unit_set_t::iterator it = preds.begin(); it != preds.end(); ++it)
         {
             sched_unit_ptr_t the_pred = *it;
             /* - must be single data successor */
-            if(get_immediate_rechable_set(dag, the_pred, rf_follow_succs_data).size() != 1)
+            if(dag.get_reachable(the_pred, sched_dag_t::rf_follow_succs_data | sched_dag_t::rf_immediate).size() != 1)
                 goto Lnext;
             /* - predecessors's predecessors */
-            sched_unit_set_t this_preds_order_succs = get_immediate_rechable_set(dag, the_pred, rf_follow_succs_order);
-            sched_unit_set_t this_preds_preds = get_immediate_rechable_set(dag, the_pred, rf_follow_preds);
+            sched_unit_set_t this_preds_order_succs = dag.get_reachable(the_pred, sched_dag_t::rf_follow_succs_order | sched_dag_t::rf_immediate);
+            sched_unit_set_t this_preds_preds = dag.get_reachable(the_pred, sched_dag_t::rf_follow_preds | sched_dag_t::rf_immediate);
             
             if(it == preds.begin())
             {

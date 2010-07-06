@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <map>
+#include <set>
 #include "config.hpp"
 #include "sched-unit.hpp"
 
@@ -23,6 +24,7 @@ class schedule_dag
     virtual const std::vector< schedule_dep >& get_preds(const schedule_unit *su) const = 0;
     virtual const std::vector< schedule_dep >& get_deps() const = 0;
 
+    /** Single unit/dep add/removal */
     // any graph change might invalidate all pointers above !
     virtual void add_dependency(schedule_dep d) = 0;
     virtual void remove_dependency(schedule_dep d) = 0;
@@ -30,11 +32,27 @@ class schedule_dag
     virtual void remove_unit(const schedule_unit *unit) = 0;
     virtual void clear() = 0;
 
-    // trivial implementation that can be optimized
+    /** Massive unit/dev add/removal */
     virtual void add_dependencies(const std::vector< schedule_dep >& deps);
     virtual void remove_dependencies(const std::vector< schedule_dep >& deps);
     virtual void add_units(const std::vector< const schedule_unit * >& units);
     virtual void remove_units(const std::vector< const schedule_unit * >& units);
+
+    /** Helper functions for graph exploration */
+    enum
+    {
+        rf_follow_preds_order = 1 << 0, /* follow order pred deps */
+        rf_follow_preds_data = 1 << 1, /* follow data pred deps */
+        rf_follow_preds = rf_follow_preds_order | rf_follow_preds_data,
+        rf_follow_succs_order = 1 << 2, /* follow order succ deps */
+        rf_follow_succs_data = 1 << 3, /* follow daat succ deps */
+        rf_follow_succs = rf_follow_succs_order | rf_follow_succs_data,
+        rf_include_unit = 1 << 4, /* include initial unit */
+        rf_immediate = 1 << 5 /* restrict to immediate neighbourhood */
+    };
+
+    virtual std::set< const schedule_unit * > get_reachable(
+        const schedule_unit *unit, unsigned flags);
 };
 
 // generic implementation, independent of schedule_unit
