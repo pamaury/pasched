@@ -604,40 +604,6 @@ void split_merge_branch_units_conservative(pasched::schedule_dag& dag)
 }
 
 /**
- * Helper functions for set intersection and union
- */
-template< typename T >
-std::set< T > intersect(const std::set< T >& a, std::set< T >& b)
-{
-    std::set< T > c;
-    typename std::set< T >::const_iterator it = a.begin();
-    typename std::set< T >::const_iterator it_end = a.end();
-
-    for(; it != it_end; ++it)
-        if(b.find(*it) != b.end())
-            c.insert(*it);
-    return c;
-}
-
-template< typename T >
-std::set< T > merge(const std::set< T >& a, std::set< T >& b)
-{
-    std::set< T > c;
-    typename std::set< T >::const_iterator it = a.begin();
-    typename std::set< T >::const_iterator it_end = a.end();
-
-    for(; it != it_end; ++it)
-        c.insert(*it);
-    
-    it = b.begin();
-    it_end = b.end();
-    for(; it != it_end; ++it)
-        c.insert(*it);
-    
-    return c;
-}
-
-/**
  * If there is a node U such that all children for the same dependency
  * are U(1) ... U(k) satisfy the property that all U(i) are reachable
  * from, say, U(1), then we can cut all (U,U(i)) dep for i>=1
