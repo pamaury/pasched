@@ -30,7 +30,7 @@ class scheduler
  * optimal solution using an alternative ilp
  * formulation
  */
-class mris_ilp_scheduler_alt : public scheduler
+class mris_ilp_scheduler : public scheduler
 {
     public:
     mris_ilp_scheduler_alt(const schedule_dag& sd);
