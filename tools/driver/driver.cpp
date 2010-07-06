@@ -2009,7 +2009,7 @@ pass_t passes[] =
     //{"collapse-sese-conservative", "Conservatively collapse single-entry single-ext subgraphs", &collapse_sese_conservative},
     //{"collapse-sese-aggressive", "Aggressively collapse single-entry single-exit subgraphs", &collapse_sese_aggressive},
     //{"collapse-oeoe-conservative", "Conservatively collapse order-entries order-exits subgraphs", &collapse_oeoe_conservative},
-    {"mris-ilp-schedule", "Schedule it with the MRIS ILP scheduler", &mris_ilp_schedule_alt},
+    {"mris-ilp-schedule", "Schedule it with the MRIS ILP scheduler", &mris_ilp_schedule},
     {"split-def-use-dom-use-deps", "Split edges from a def to a use which dominates all other uses", &split_def_use_dom_use_deps},
     {"strip-redundant-data-deps", "", &strip_redundant_data_deps},
     {"smart-fuse-two-units", "", &smart_fuse_two_units},

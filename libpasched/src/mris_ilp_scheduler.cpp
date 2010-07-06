@@ -20,12 +20,12 @@
 namespace PAMAURY_SCHEDULER_NS
 {
 
-mris_ilp_scheduler_alt::mris_ilp_scheduler_alt(const schedule_dag& sd)
+mris_ilp_scheduler::mris_ilp_scheduler(const schedule_dag& sd)
     :scheduler(sd)
 {
 }
 
-mris_ilp_scheduler_alt::~mris_ilp_scheduler_alt()
+mris_ilp_scheduler::~mris_ilp_scheduler()
 {
 }
 
@@ -46,7 +46,7 @@ struct instr_regs_info_t
     std::vector< reg_info_t > reg_info;
 };
 
-void mris_ilp_scheduler_alt::schedule(schedule_chain& sc)
+void mris_ilp_scheduler::schedule(schedule_chain& sc)
 {
     char name[32];
     // column of z

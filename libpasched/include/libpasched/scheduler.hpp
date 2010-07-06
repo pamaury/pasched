@@ -33,8 +33,8 @@ class scheduler
 class mris_ilp_scheduler : public scheduler
 {
     public:
-    mris_ilp_scheduler_alt(const schedule_dag& sd);
-    virtual ~mris_ilp_scheduler_alt();
+    mris_ilp_scheduler(const schedule_dag& sd);
+    virtual ~mris_ilp_scheduler();
 
     virtual void schedule(schedule_chain& sc);
 
