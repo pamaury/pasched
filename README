@@ -1,0 +1,11 @@
+The goal of this project is to build a register pressure aware instruction scheduler.
+Although such schedulers are already used in compilers such as gcc or llvm, none of them is based on a research paper.
+Furthermore, all research papers on the subject come up with heuristics.
+
+I think that this approach is not the good one given that for the vast majority of DAGs, finding an optimal scheduler (which minimizes the register pressure) is feasable.
+The problem is stil NP-complete is the general case but this no way near a good reason to try random heuristics.
+
+My approach is to take a DAG and to reduce it using various transformation which preserve optimality.
+Ultimately the DAG still has to be scheduled and more importantly, the scheduler has to solve an even more complicated problem than at the beginning because I allow each schedule unit to have an internal register pressure and to create several variables.
+This is not a problem in practice because the preferred scheduling backend is an ILP solver using a smartly constructed ILP program.
+If the DAGs is too big for an ILP to solve it in reasonable time, there is always the possibility to plug a custom scheduler backend.
