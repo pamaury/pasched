@@ -4,6 +4,7 @@
 #include "config.hpp"
 #include "sched-dag.hpp"
 #include "sched-chain.hpp"
+#include "sched-transform.hpp"
 
 namespace PAMAURY_SCHEDULER_NS
 {
@@ -14,7 +15,7 @@ class scheduler
     scheduler();
     virtual ~scheduler();
 
-    virtual void schedule(const schedule_dag& dag, schedule_chain& sc) = 0;
+    virtual void schedule(const schedule_dag& dag, schedule_chain& sc) const = 0;
 
     protected:
 };
@@ -30,7 +31,7 @@ class mris_ilp_scheduler : public scheduler
     mris_ilp_scheduler();
     virtual ~mris_ilp_scheduler();
 
-    virtual void schedule(const schedule_dag& dag, schedule_chain& sc);
+    virtual void schedule(const schedule_dag& dag, schedule_chain& sc) const;
 
     protected:
 };
