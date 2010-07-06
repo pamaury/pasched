@@ -20,8 +20,7 @@
 namespace PAMAURY_SCHEDULER_NS
 {
 
-mris_ilp_scheduler::mris_ilp_scheduler(const schedule_dag& sd)
-    :scheduler(sd)
+mris_ilp_scheduler::mris_ilp_scheduler()
 {
 }
 
@@ -46,7 +45,7 @@ struct instr_regs_info_t
     std::vector< reg_info_t > reg_info;
 };
 
-void mris_ilp_scheduler::schedule(schedule_chain& sc)
+void mris_ilp_scheduler::schedule(const schedule_dag& dag, schedule_chain& sc)
 {
     char name[32];
     // column of z
@@ -64,17 +63,17 @@ void mris_ilp_scheduler::schedule(schedule_chain& sc)
     // columns of the rp(u)
     std::vector< int> rp_u_col;
     // shortcut
-    const std::vector< const schedule_unit * > units = m_graph.get_units();
+    const std::vector< const schedule_unit * > units = dag.get_units();
     // unit map
     std::map< const schedule_unit *, unsigned > unit_map;
     // for each instruction, store a list of created registers and killers
     std::vector< instr_regs_info_t > reg_created;
 
     
-    size_t n = m_graph.get_units().size();
+    size_t n = dag.get_units().size();
     /* build unit map */
     for(unsigned u = 0; u < n; u++)
-        unit_map[m_graph.get_units()[u]] = u;
+        unit_map[dag.get_units()[u]] = u;
     
     /* compute register informations */
     reg_created.resize(n);
@@ -85,9 +84,9 @@ void mris_ilp_scheduler::schedule(schedule_chain& sc)
         instr_regs_info_t& rc = reg_created[u];
 
         // for each successor S
-        for(size_t i = 0; i < m_graph.get_succs(unit).size(); i++)
+        for(size_t i = 0; i < dag.get_succs(unit).size(); i++)
         {
-            const schedule_dep& dep = m_graph.get_succs(unit)[i];
+            const schedule_dep& dep = dag.get_succs(unit)[i];
             // skip if not a data dep
             if(dep.kind() != schedule_dep::data_dep)
                 continue;
@@ -304,9 +303,9 @@ void mris_ilp_scheduler::schedule(schedule_chain& sc)
         }
     #endif
     // for each (u,v) arc, fix the w(u,v) variable to 1 or 0
-    for(size_t i = 0; i < m_graph.get_deps().size(); i++)
+    for(size_t i = 0; i < dag.get_deps().size(); i++)
     {
-        const schedule_dep& dep = m_graph.get_deps()[i];
+        const schedule_dep& dep = dag.get_deps()[i];
         unsigned u = unit_map[dep.from()];
         unsigned v = unit_map[dep.to()];
 
@@ -475,8 +474,8 @@ void mris_ilp_scheduler::schedule(schedule_chain& sc)
                 if(path[u][v])
                     continue;
                 path[u][v] = true;
-                for(size_t i = 0; i < m_graph.get_succs(units[v]).size(); i++)
-                    q.push(unit_map[m_graph.get_succs(units[v])[i].to()]);
+                for(size_t i = 0; i < dag.get_succs(units[v]).size(); i++)
+                    q.push(unit_map[dag.get_succs(units[v])[i].to()]);
             }
         }
     }

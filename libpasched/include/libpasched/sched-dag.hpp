@@ -24,6 +24,11 @@ class schedule_dag
     virtual const std::vector< schedule_dep >& get_preds(const schedule_unit *su) const = 0;
     virtual const std::vector< schedule_dep >& get_deps() const = 0;
 
+    /** State */
+    /* keep track of modification state */
+    virtual bool modified() const = 0;
+    virtual void set_modified(bool mod) = 0;
+
     /** Single unit/dep add/removal */
     // any graph change might invalidate all pointers above !
     virtual void add_dependency(schedule_dep d) = 0;
@@ -59,8 +64,8 @@ class schedule_dag
 class generic_schedule_dag : public schedule_dag
 {
     public:
-    inline generic_schedule_dag(){}
-    inline virtual ~generic_schedule_dag(){}
+    generic_schedule_dag();
+    virtual ~generic_schedule_dag();
 
     virtual const std::vector< const schedule_unit *>& get_roots() const { return m_roots; }
     virtual const std::vector< const schedule_unit *>& get_leaves() const { return m_leaves; }
@@ -69,6 +74,9 @@ class generic_schedule_dag : public schedule_dag
     virtual const std::vector< schedule_dep >& get_succs(const schedule_unit *su) const { return m_unit_map[su].succs; }
     virtual const std::vector< schedule_dep >& get_preds(const schedule_unit *su) const { return m_unit_map[su].preds; }
     virtual const std::vector< schedule_dep >& get_deps() const { return m_deps; }
+
+    virtual bool modified() const;
+    virtual void set_modified(bool mod);
 
     virtual void add_dependency(schedule_dep d);
     virtual void remove_dependency(schedule_dep d);
@@ -90,6 +98,7 @@ class generic_schedule_dag : public schedule_dag
     std::vector< const schedule_unit * > m_leaves;
     std::vector< schedule_dep > m_deps;
     mutable std::map< const schedule_unit *, su_data >  m_unit_map;
+    bool m_modified;
 };
 
 struct dag_printer_opt

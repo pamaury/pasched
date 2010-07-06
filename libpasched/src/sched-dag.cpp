@@ -85,6 +85,25 @@ std::set< const schedule_unit * > schedule_dag::get_reachable(const schedule_uni
 /**
  * Generic Implementation
  */
+generic_schedule_dag::generic_schedule_dag()
+{
+    set_modified(false);
+}
+
+
+generic_schedule_dag::~generic_schedule_dag()
+{
+}
+
+bool generic_schedule_dag::modified() const
+{
+    return m_modified;
+}
+
+void generic_schedule_dag::set_modified(bool mod)
+{
+    m_modified = mod;
+}
 
 void generic_schedule_dag::add_unit(const schedule_unit *u)
 {
@@ -92,6 +111,8 @@ void generic_schedule_dag::add_unit(const schedule_unit *u)
     m_roots.push_back(u);
     m_leaves.push_back(u);
     m_unit_map.insert(std::make_pair(u, su_data()));
+    
+    set_modified(true);
 
     #ifdef AUTO_CHECK_CONSISTENCY
     std::string s;
@@ -135,6 +156,8 @@ void generic_schedule_dag::remove_unit(const schedule_unit *u)
             m_leaves.push_back(m_units[i]);
     }
 
+    set_modified(true);
+
     #ifdef AUTO_CHECK_CONSISTENCY
     std::string s;
     if(!is_consistent(&s))
@@ -150,6 +173,8 @@ void generic_schedule_dag::add_dependency(schedule_dep d)
 
     unordered_find_and_remove(d.from(), m_leaves);
     unordered_find_and_remove(d.to(), m_roots);
+
+    set_modified(true);
 
     #ifdef AUTO_CHECK_CONSISTENCY
     std::string s;
@@ -172,6 +197,8 @@ void generic_schedule_dag::remove_dependency(schedule_dep d)
         m_leaves.push_back(d.from());
     if(m_unit_map[d.to()].preds.size() == 0)
         m_roots.push_back(d.to());
+
+    set_modified(true);
 
     #ifdef AUTO_CHECK_CONSISTENCY
     std::string s;
@@ -262,6 +289,7 @@ void generic_schedule_dag::clear()
     m_roots.clear();
     m_unit_map.clear();
     m_deps.clear();
+    set_modified(true);
 }
 
 }

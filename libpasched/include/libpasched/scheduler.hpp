@@ -11,18 +11,12 @@ namespace PAMAURY_SCHEDULER_NS
 class scheduler
 {
     public:
-    scheduler(const schedule_dag& sd);
+    scheduler();
     virtual ~scheduler();
 
-    virtual inline const schedule_dag& get_schedule_dag() const
-    {
-        return m_graph;
-    }
-
-    virtual void schedule(schedule_chain& sc) = 0;
+    virtual void schedule(const schedule_dag& dag, schedule_chain& sc) = 0;
 
     protected:
-    const schedule_dag& m_graph;
 };
 
 /**
@@ -33,10 +27,10 @@ class scheduler
 class mris_ilp_scheduler : public scheduler
 {
     public:
-    mris_ilp_scheduler(const schedule_dag& sd);
+    mris_ilp_scheduler();
     virtual ~mris_ilp_scheduler();
 
-    virtual void schedule(schedule_chain& sc);
+    virtual void schedule(const schedule_dag& dag, schedule_chain& sc);
 
     protected:
 };

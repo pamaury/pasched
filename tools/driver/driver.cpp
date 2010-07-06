@@ -614,10 +614,10 @@ void split_def_use_dom_use_deps(pasched::schedule_dag& dag)
  */
 void mris_ilp_schedule(pasched::schedule_dag& dag)
 {
-    pasched::mris_ilp_scheduler mris(dag);
+    pasched::mris_ilp_scheduler mris;
     pasched::generic_schedule_chain sc;
 
-    mris.schedule(sc);
+    mris.schedule(dag, sc);
 
     //std::cout << "-==== Schedule ====-\n";
     /*
