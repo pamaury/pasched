@@ -1,0 +1,7 @@
+find_path(GLPK_INCLUDE_DIR glpk.h)
+find_library(GLPK_LIBRARY glpk)
+set(GLPK_FOUND "NO")
+
+if(GLPK_INCLUDE_DIR AND GLPK_LIBRARY)
+    set(GLPK_FOUND "YES")
+endif(GLPK_INCLUDE_DIR AND GLPK_LIBRARY)
