@@ -10,6 +10,9 @@
 namespace PAMAURY_SCHEDULER_NS
 {
 
+/**
+ * Represent a DAG to schedule with all the data and order dependencies
+ */
 class schedule_dag
 {
     public:
@@ -68,7 +71,9 @@ class schedule_dag
         const schedule_unit *unit);
 };
 
-// generic implementation, independent of schedule_unit
+/**
+ * Generic implementation of the interface
+ */
 class generic_schedule_dag : public schedule_dag
 {
     public:
@@ -109,6 +114,10 @@ class generic_schedule_dag : public schedule_dag
     bool m_modified;
 };
 
+/**
+ * Debug functions to print a DAG to a DOT file which can later be rendered
+ * by Graphivz
+ */
 struct dag_printer_opt
 {
     enum dag_printer_opt_type

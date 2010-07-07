@@ -37,6 +37,27 @@ const ddl_schedule_unit *ddl_schedule_unit::dup() const
     return new ddl_schedule_unit(*this);
 }
 
+std::vector< std::string >& ddl_schedule_unit::out()
+{
+    return m_out;
+}
+
+const std::vector< std::string >& ddl_schedule_unit::out() const
+{
+    return m_out;
+}
+
+std::vector< std::string >& ddl_schedule_unit::in()
+{
+    return m_in;
+}
+
+const std::vector< std::string >& ddl_schedule_unit::in() const
+{
+    return m_in;
+}
+
+
 namespace
 {
     void parse_dep_list(std::string line, std::vector< std::string >& list)
