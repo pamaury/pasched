@@ -100,52 +100,6 @@ std::ostream& operator<<(std::ostream& os, const std::vector< T >& v)
 }
 
 /**
- * Custom schedule units
- */
-class chain_schedule_unit : public pasched::schedule_unit
-{
-    public:
-    chain_schedule_unit() {}
-    virtual ~chain_schedule_unit() {}
-
-    virtual std::string to_string() const
-    {
-        std::ostringstream oss;
-        oss << "[Chain IRP=" << internal_register_pressure() << "]\n";
-        for(size_t i = 0; i < m_chain.size(); i++)
-        {
-            oss << m_chain[i]->to_string();
-            if((i + 1) != m_chain.size())
-                oss << "\n[Then]\n";
-        }
-
-        return oss.str();
-    }
-
-    virtual const chain_schedule_unit *dup() const
-    {
-        return new chain_schedule_unit(*this);
-    }
-
-    virtual unsigned internal_register_pressure() const
-    {
-        return m_irp;
-    }
-
-    virtual void set_internal_register_pressure(unsigned v)
-    {
-        m_irp = v;
-    }
-
-    const std::vector< const schedule_unit * >& get_chain() const { return m_chain; }
-    std::vector< const schedule_unit * >& get_chain() { return m_chain; }
-
-    protected:
-    unsigned m_irp;
-    std::vector< const schedule_unit * > m_chain;
-};
-
-/**
  * Delete order dependencies that are redundant because they are already
  * enforced by a combinaison of data&order dependencies.
  * They do not change the scheduling but simplify the graph.
@@ -637,7 +591,7 @@ void fuse_unit_to_successor(pasched::schedule_dag& dag, sched_unit_ptr_t unit)
     std::cout << " and: " << succ << "\n";
     //*/
     /* create new node */
-    chain_schedule_unit *c = new chain_schedule_unit;
+    pasched::chain_schedule_unit *c = new pasched::chain_schedule_unit;
     c->get_chain().push_back(unit);
     c->get_chain().push_back(succ);
     /* number of input data deps to succ NOT counting unit */
@@ -710,7 +664,7 @@ void fuse_unit_to_predecessor(pasched::schedule_dag& dag, sched_unit_ptr_t unit)
     std::cout << " and: " << unit << "\n";
     //*/
     /* create new node */
-    chain_schedule_unit *c = new chain_schedule_unit;
+    pasched::chain_schedule_unit *c = new pasched::chain_schedule_unit;
     c->get_chain().push_back(pred);
     c->get_chain().push_back(unit);
     /* create new dependencies */
