@@ -3,6 +3,7 @@
 
 #include "config.hpp"
 #include <string>
+#include <vector>
 
 namespace PAMAURY_SCHEDULER_NS
 {
@@ -59,8 +60,8 @@ class schedule_dep
 class schedule_unit
 {
     public:
-    schedule_unit() {}
-    virtual ~schedule_unit() {}
+    schedule_unit();
+    virtual ~schedule_unit();
 
     virtual std::string to_string() const = 0;
 
@@ -75,6 +76,28 @@ class schedule_unit
      * is one because of the hidden 'a'.
      */
     virtual unsigned internal_register_pressure() const = 0;
+};
+
+class chain_schedule_unit : public schedule_unit
+{
+    public:
+    chain_schedule_unit();
+    virtual ~chain_schedule_unit();
+
+    virtual std::string to_string() const;
+
+    virtual const chain_schedule_unit *dup() const;
+
+    virtual unsigned internal_register_pressure() const;
+
+    virtual void set_internal_register_pressure(unsigned v);
+
+    const std::vector< const schedule_unit * >& get_chain() const;
+    std::vector< const schedule_unit * >& get_chain();
+
+    protected:
+    unsigned m_irp;
+    std::vector< const schedule_unit * > m_chain;
 };
 
 }
