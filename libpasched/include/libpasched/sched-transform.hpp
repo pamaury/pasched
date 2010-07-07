@@ -47,6 +47,21 @@ class dummy_schedule_chain_transformation : public schedule_chain_transformation
     virtual void transform(schedule_chain& sc) const;
 };
 
+class chain_expander_schedule_chain_transformation : public schedule_chain_transformation
+{
+    public:
+    chain_expander_schedule_chain_transformation();
+    virtual ~chain_expander_schedule_chain_transformation();
+
+    virtual void transform(schedule_chain& sc) const;
+
+    virtual const std::vector< const chain_schedule_unit *>& expand_list() const;
+    virtual std::vector< const chain_schedule_unit *>& expand_list();
+
+    protected:
+    std::vector< const chain_schedule_unit *> m_expand_list;
+};
+
 class schedule_dag_tranformation
 {
     public:

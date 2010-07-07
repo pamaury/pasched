@@ -1,5 +1,6 @@
 #include <sched-transform.hpp>
 #include <sstream>
+#include <stdexcept>
 
 namespace PAMAURY_SCHEDULER_NS
 {
@@ -80,6 +81,32 @@ dummy_schedule_chain_transformation::~dummy_schedule_chain_transformation()
 
 void dummy_schedule_chain_transformation::transform(schedule_chain&) const
 {
+}
+
+/**
+ * chain_expander_schedule_chain_transformation
+ */
+chain_expander_schedule_chain_transformation::chain_expander_schedule_chain_transformation()
+{
+}
+
+chain_expander_schedule_chain_transformation::~chain_expander_schedule_chain_transformation()
+{
+}
+
+void chain_expander_schedule_chain_transformation::transform(schedule_chain&) const
+{
+    throw std::runtime_error("chain_expander_schedule_chain_transformation::transform is unimplemented");
+}
+
+const std::vector< const chain_schedule_unit * >& chain_expander_schedule_chain_transformation::expand_list() const
+{
+    return m_expand_list;
+}
+
+std::vector< const chain_schedule_unit * >& chain_expander_schedule_chain_transformation::expand_list()
+{
+    return m_expand_list;
 }
 
 /**
