@@ -145,51 +145,6 @@ class chain_schedule_unit : public pasched::schedule_unit
     std::vector< const schedule_unit * > m_chain;
 };
 
-reg_set_t get_reg_create_set(const sched_dag_t& dag,
-    sched_unit_ptr_t unit)
-{
-    reg_set_t s;
-    for(size_t i = 0; i < dag.get_succs(unit).size(); i++)
-        if(dag.get_succs(unit)[i].kind() == sched_dep_t::data_dep)
-            s.insert(dag.get_succs(unit)[i].reg());
-    return s;
-}
-
-reg_set_t get_reg_use_set(const sched_dag_t& dag,
-    sched_unit_ptr_t unit)
-{
-    reg_set_t s;
-    for(size_t i = 0; i < dag.get_preds(unit).size(); i++)
-        if(dag.get_preds(unit)[i].kind() == sched_dep_t::data_dep)
-            s.insert(dag.get_preds(unit)[i].reg());
-    return s;
-}
-
-reg_set_t get_reg_destroy_set(const sched_dag_t& dag,
-    sched_unit_ptr_t unit)
-{
-    reg_set_t s;
-    for(size_t i = 0; i < dag.get_preds(unit).size(); i++)
-    {
-        const sched_dep_t& dep = dag.get_preds(unit)[i];
-        if(dep.kind() != sched_dep_t::data_dep)
-            continue;
-        for(size_t j = 0; j < dag.get_succs(dep.from()).size(); j++)
-        {
-            const sched_dep_t& sec_dep = dag.get_succs(dep.from())[j];
-            if(sec_dep.kind() == sched_dep_t::data_dep &&
-                    sec_dep.reg() == dep.reg() &&
-                    sec_dep.to() != unit)
-                goto Lnot_destroy;
-        }
-        s.insert(dep.reg());
-
-        Lnot_destroy:
-        continue;
-    }
-    return s;
-}
-
 /**
  * Delete order dependencies that are redundant because they are already
  * enforced by a combinaison of data&order dependencies.
@@ -731,8 +686,8 @@ void fuse_unit_to_successor(pasched::schedule_dag& dag, sched_unit_ptr_t unit)
     #endif
 
     /* fixme: computation might ne wrong */
-    unsigned vc_size = get_reg_create_set(dag, unit).size();
-    unsigned vu_size = get_reg_use_set(dag, succ).size();
+    unsigned vc_size = dag.get_reg_create(unit).size();
+    unsigned vu_size = dag.get_reg_use(succ).size();
     c->set_internal_register_pressure(
         std::max(vu_size - vc_size + unit->internal_register_pressure(),
         std::max(vu_size,
@@ -782,8 +737,8 @@ void fuse_unit_to_predecessor(pasched::schedule_dag& dag, sched_unit_ptr_t unit)
     }
 
     /* fixme: computation might be wrong */
-    unsigned vc_size = get_reg_create_set(dag, pred).size();
-    unsigned vd_size = get_reg_destroy_set(dag, unit).size();
+    unsigned vc_size = dag.get_reg_create(pred).size();
+    unsigned vd_size = dag.get_reg_destroy(unit).size();
     c->set_internal_register_pressure(
         std::max(pred->internal_register_pressure(),
         std::max(vc_size,
@@ -817,9 +772,9 @@ void smart_fuse_two_units(pasched::schedule_dag& dag)
         {
             sched_unit_ptr_t unit = dag.get_units()[u];
 
-            reg_set_t vc = get_reg_create_set(dag, unit);
-            reg_set_t vu = get_reg_use_set(dag, unit);
-            reg_set_t vd = get_reg_destroy_set(dag, unit);
+            reg_set_t vc = dag.get_reg_create(unit);
+            reg_set_t vu = dag.get_reg_use(unit);
+            reg_set_t vd = dag.get_reg_destroy(unit);
             sched_unit_set_t ipreds = dag.get_reachable(unit, sched_dag_t::rf_follow_preds | sched_dag_t::rf_immediate);
             sched_unit_set_t isuccs = dag.get_reachable(unit, sched_dag_t::rf_follow_succs | sched_dag_t::rf_immediate);
 

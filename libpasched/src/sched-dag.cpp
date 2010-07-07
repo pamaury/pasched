@@ -82,6 +82,51 @@ std::set< const schedule_unit * > schedule_dag::get_reachable(const schedule_uni
     return s;
 }
 
+std::set< schedule_dep::reg_t > schedule_dag::get_reg_create(
+    const schedule_unit *unit)
+{
+    std::set< schedule_dep::reg_t > s;
+    for(size_t i = 0; i < get_succs(unit).size(); i++)
+        if(get_succs(unit)[i].kind() == schedule_dep::data_dep)
+            s.insert(get_succs(unit)[i].reg());
+    return s;
+}
+
+std::set< schedule_dep::reg_t > schedule_dag::get_reg_use(
+    const schedule_unit *unit)
+{
+    std::set< schedule_dep::reg_t > s;
+    for(size_t i = 0; i < get_preds(unit).size(); i++)
+        if(get_preds(unit)[i].kind() == schedule_dep::data_dep)
+            s.insert(get_preds(unit)[i].reg());
+    return s;
+}
+
+std::set< schedule_dep::reg_t > schedule_dag::get_reg_destroy(
+    const schedule_unit *unit)
+{
+    std::set< schedule_dep::reg_t > s;
+    for(size_t i = 0; i < get_preds(unit).size(); i++)
+    {
+        const schedule_dep& dep = get_preds(unit)[i];
+        if(dep.kind() != schedule_dep::data_dep)
+            continue;
+        for(size_t j = 0; j < get_succs(dep.from()).size(); j++)
+        {
+            const schedule_dep& sec_dep = get_succs(dep.from())[j];
+            if(sec_dep.kind() == schedule_dep::data_dep &&
+                    sec_dep.reg() == dep.reg() &&
+                    sec_dep.to() != unit)
+                goto Lnot_destroy;
+        }
+        s.insert(dep.reg());
+
+        Lnot_destroy:
+        continue;
+    }
+    return s;
+}
+
 /**
  * Generic Implementation
  */

@@ -7,13 +7,15 @@
 namespace PAMAURY_SCHEDULER_NS
 {
 
+
+
 class schedule_chain_transformation
 {
     public:
     schedule_chain_transformation();
     virtual ~schedule_chain_transformation();
 
-    virtual void transform(schedule_chain& sc) = 0;
+    virtual void transform(schedule_chain& sc) const = 0;
 };
 
 class dummy_schedule_chain_transformation : public schedule_chain_transformation
@@ -22,7 +24,7 @@ class dummy_schedule_chain_transformation : public schedule_chain_transformation
     dummy_schedule_chain_transformation();
     virtual ~dummy_schedule_chain_transformation();
 
-    virtual void transform(schedule_chain& sc);
+    virtual void transform(schedule_chain& sc) const;
 };
 
 class schedule_dag_tranformation

@@ -25,7 +25,7 @@ dummy_schedule_chain_transformation::~dummy_schedule_chain_transformation()
 {
 }
 
-void dummy_schedule_chain_transformation::transform(schedule_chain&)
+void dummy_schedule_chain_transformation::transform(schedule_chain&) const
 {
 }
 

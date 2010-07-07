@@ -58,6 +58,14 @@ class schedule_dag
 
     virtual std::set< const schedule_unit * > get_reachable(
         const schedule_unit *unit, unsigned flags);
+
+    /** Helper functions for register information */
+    virtual std::set< schedule_dep::reg_t > get_reg_create(
+        const schedule_unit *unit);
+    virtual std::set< schedule_dep::reg_t > get_reg_use(
+        const schedule_unit *unit);
+    virtual std::set< schedule_dep::reg_t > get_reg_destroy(
+        const schedule_unit *unit);
 };
 
 // generic implementation, independent of schedule_unit
