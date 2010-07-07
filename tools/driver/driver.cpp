@@ -544,37 +544,11 @@ void mris_ilp_schedule(pasched::schedule_dag& dag)
     }
 }
 
-/**
- * Make sure every data dependency has a non-zero register ID
- * and that these IDs are unique among the DAG. This pass handles
- * data dep which already are non-zero but reassign them a new number
- */
 void unique_reg_ids(pasched::schedule_dag& dag)
 {
-    sched_dep_vec_t to_remove;
-    sched_dep_vec_t to_add;
-    unsigned reg_idx = 1;
-    
-    for(size_t u = 0; u < dag.get_units().size(); u++)
-    {
-        sched_unit_ptr_t unit = dag.get_units()[u];
-        std::map< unsigned, unsigned > reg_map;
-        
-        for(size_t i = 0; i < dag.get_succs(unit).size(); i++)
-        {
-            sched_dep_t dep = dag.get_succs(unit)[i];
-            to_remove.push_back(dep);
-
-            if(reg_map.find(dep.reg()) == reg_map.end())
-                reg_map[dep.reg()] = reg_idx++;
-            
-            dep.set_reg(reg_map[dep.reg()]);
-            to_add.push_back(dep);
-        }
-    }
-
-    dag.remove_dependencies(to_remove);
-    dag.add_dependencies(to_add);
+    const pasched::unique_reg_ids uri;
+    const pasched::schedule_chain_transformation *sct= uri.transform(dag);
+    delete sct;
 }
 
 /**

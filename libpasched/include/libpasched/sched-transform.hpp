@@ -47,11 +47,11 @@ class dummy_schedule_chain_transformation : public schedule_chain_transformation
     virtual void transform(schedule_chain& sc) const;
 };
 
-class chain_expander_schedule_chain_transformation : public schedule_chain_transformation
+class chain_expander : public schedule_chain_transformation
 {
     public:
-    chain_expander_schedule_chain_transformation();
-    virtual ~chain_expander_schedule_chain_transformation();
+    chain_expander();
+    virtual ~chain_expander();
 
     virtual void transform(schedule_chain& sc) const;
 
@@ -69,7 +69,22 @@ class schedule_dag_tranformation
     schedule_dag_tranformation();
     virtual ~schedule_dag_tranformation();
 
-    virtual schedule_chain_transformation *transform(schedule_dag& sc) const = 0;
+    virtual const schedule_chain_transformation *transform(schedule_dag& sc) const = 0;
+};
+
+/**
+ * Make sure every data dependency has a non-zero register ID
+ * and that these IDs are unique among the DAG. This pass handles
+ * data dep which already are non-zero but reassign them a new number
+ */
+class unique_reg_ids : public schedule_dag_tranformation
+{
+    public:
+
+    unique_reg_ids();
+    virtual ~unique_reg_ids();
+
+    virtual const schedule_chain_transformation *transform(schedule_dag& sc) const;
 };
 
 }

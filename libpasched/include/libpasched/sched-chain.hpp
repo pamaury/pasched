@@ -24,7 +24,7 @@ class schedule_chain
 };
 
 /**
- * Simple implemented of the interface using a vector
+ * Simple implementation of the interface using a vector
  */
 class generic_schedule_chain : public schedule_chain
 {
