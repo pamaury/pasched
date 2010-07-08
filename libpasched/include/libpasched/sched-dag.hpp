@@ -63,12 +63,57 @@ class schedule_dag
         const schedule_unit *unit, unsigned flags);
 
     /** Helper functions for register information */
+
+    /**
+     * Compute the set of register created by a schedule unit
+     */
     virtual std::set< schedule_dep::reg_t > get_reg_create(
         const schedule_unit *unit);
+    /**
+     * Compute the set of registers used by a schedule unit
+     */
     virtual std::set< schedule_dep::reg_t > get_reg_use(
         const schedule_unit *unit);
+    /**
+     * Compute the set of registers used by a schedule unit and
+     * which are necessarily destroyed by it (ie last use).
+     *
+     * NOTE: this function uses a simple method, that is registers
+     *       which are used by the unit and of which the unit is the
+     *       only use. This is an underapproximation
+     */
     virtual std::set< schedule_dep::reg_t > get_reg_destroy(
         const schedule_unit *unit);
+    /**
+     * Compute the set of registers used by a schedule unit and
+     * which are necessarily destroyed by it (ie last use).
+     *
+     * NOTE: this function does a complete analysis of other dependencies
+     *       and is thus exact but more expensive
+     */
+    virtual std::set< schedule_dep::reg_t > get_reg_destroy_exact(
+        const schedule_unit *unit);
+    /**
+     * Compute the set of registers used by a schedule unit and
+     * which are necessarily not destroyed by it (ie not last use).
+     *
+     * NOTE: this function does a complete analysis of other dependencies
+     *       and is thus exact but more expensive
+     */
+    virtual std::set< schedule_dep::reg_t > get_reg_dont_destroy_exact(
+        const schedule_unit *unit);
+
+    /**
+     * Fuse two units by removing them from the graph and replacing
+     * them by a single chain_schedule_unit
+     *
+     * NOTE: the return chain_schedule_unit is not const to allow
+     *       further modification
+     * NOTE: the operation is not necessarily checked for consistency,
+     *       so you can produce illegal graphs with this !
+     */
+    virtual chain_schedule_unit *fuse_units(const schedule_unit *a,
+        const schedule_unit *b);
 };
 
 /**

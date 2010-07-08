@@ -22,7 +22,7 @@ typedef std::set< sched_unit_ptr_t > sched_unit_set_t;
 typedef std::vector< sched_unit_ptr_t > sched_unit_vec_t;
 typedef std::vector< sched_dep_t > sched_dep_vec_t;
 typedef sched_dep_t::reg_t sched_reg_t;
-typedef std::set< sched_reg_t > reg_set_t;
+typedef std::set< sched_reg_t > sched_reg_set_t;
 
 /**
  * I/O functions
@@ -558,138 +558,16 @@ void fuse_unit_to_successor(pasched::schedule_dag& dag, sched_unit_ptr_t unit)
 {
     if(dag.get_reachable(unit, sched_dag_t::rf_follow_succs | sched_dag_t::rf_immediate).size() != 1)
         throw std::runtime_error("fuse_unit_to_successor called with invalid parameters");
-    sched_unit_ptr_t succ = dag.get_succs(unit)[0].to();
-
-    /*
-    std::cout << "Fuse: " << unit << "\n";
-    std::cout << " and: " << succ << "\n";
-    //*/
-    /* create new node */
-    pasched::chain_schedule_unit *c = new pasched::chain_schedule_unit;
-    c->get_chain().push_back(unit);
-    c->get_chain().push_back(succ);
-    /* number of input data deps to succ NOT counting unit */
-    unsigned data_deps_wo = 0;
-    /* number of input data deps to succ COUTING unit */
-    unsigned data_deps = 0;
-    /* create new dependencies */
-    sched_dep_vec_t to_add;
-    for(size_t i = 0; i < dag.get_preds(unit).size(); i++)
-    {
-        sched_dep_t dep = dag.get_preds(unit)[i];
-        dep.set_to(c);
-        to_add.push_back(dep);
-    }
-    for(size_t i = 0; i < dag.get_preds(succ).size(); i++)
-    {
-        sched_dep_t dep = dag.get_preds(succ)[i];
-        if(dep.kind() == sched_dep_t::data_dep)
-            data_deps++;
-        if(dep.from() == unit)
-            continue;
-        if(dep.kind() == sched_dep_t::data_dep)
-            data_deps_wo++;
-        dep.set_to(c);
-        to_add.push_back(dep);
-    }
-    for(size_t i = 0; i < dag.get_succs(succ).size(); i++)
-    {
-        sched_dep_t dep = dag.get_succs(succ)[i];
-        dep.set_from(c);
-        to_add.push_back(dep);
-    }
-
-    #if 0
-    {
-        std::vector< pasched::dag_printer_opt > opts;
-        pasched::dag_printer_opt o;
-        o.type = pasched::dag_printer_opt::po_color_node;
-        o.color_node.unit = succ;
-        o.color_node.color = "red";
-        opts.push_back(o);
-        o.color_node.unit = unit;
-        opts.push_back(o);
-        pasched::debug_view_dag(dag, opts);
-    }
-    #endif
-
-    /* fixme: computation might ne wrong */
-    unsigned vc_size = dag.get_reg_create(unit).size();
-    unsigned vu_size = dag.get_reg_use(succ).size();
-    c->set_internal_register_pressure(
-        std::max(vu_size - vc_size + unit->internal_register_pressure(),
-        std::max(vu_size,
-                succ->internal_register_pressure())));
-
-    dag.add_unit(c);
-    dag.remove_unit(unit);
-    dag.remove_unit(succ);
-    dag.add_dependencies(to_add);
+        
+    dag.fuse_units(unit, dag.get_succs(unit)[0].to());
 }
 
 void fuse_unit_to_predecessor(pasched::schedule_dag& dag, sched_unit_ptr_t unit)
 {
     if(dag.get_reachable(unit, sched_dag_t::rf_follow_preds | sched_dag_t::rf_immediate).size() != 1)
         throw std::runtime_error("fuse_unit_to_predecessor called with invalid parameters");
-    sched_unit_ptr_t pred = dag.get_preds(unit)[0].from();
 
-    /*
-    std::cout << "Fuse: " << pred << "\n";
-    std::cout << " and: " << unit << "\n";
-    //*/
-    /* create new node */
-    pasched::chain_schedule_unit *c = new pasched::chain_schedule_unit;
-    c->get_chain().push_back(pred);
-    c->get_chain().push_back(unit);
-    /* create new dependencies */
-    sched_dep_vec_t to_add;
-    for(size_t i = 0; i < dag.get_succs(unit).size(); i++)
-    {
-        sched_dep_t dep = dag.get_succs(unit)[i];
-        dep.set_from(c);
-        to_add.push_back(dep);
-    }
-    for(size_t i = 0; i < dag.get_succs(pred).size(); i++)
-    {
-        sched_dep_t dep = dag.get_succs(pred)[i];
-        if(dep.to() == unit)
-            continue;
-        dep.set_from(c);
-        to_add.push_back(dep);
-    }
-    for(size_t i = 0; i < dag.get_preds(pred).size(); i++)
-    {
-        sched_dep_t dep = dag.get_preds(pred)[i];
-        dep.set_to(c);
-        to_add.push_back(dep);
-    }
-
-    /* fixme: computation might be wrong */
-    unsigned vc_size = dag.get_reg_create(pred).size();
-    unsigned vd_size = dag.get_reg_destroy(unit).size();
-    c->set_internal_register_pressure(
-        std::max(pred->internal_register_pressure(),
-        std::max(vc_size,
-                vc_size - vd_size + unit->internal_register_pressure())));
-
-    #if 0
-    {
-        std::vector< pasched::dag_printer_opt > opts;
-        pasched::dag_printer_opt o;
-        o.type = pasched::dag_printer_opt::po_color_node;
-        o.color_node.unit = pred;
-        o.color_node.color = "red";
-        opts.push_back(o);
-        o.color_node.unit = unit;
-        opts.push_back(o);
-        pasched::debug_view_dag(dag, opts);
-    }
-    #endif
-
-    dag.add_unit(c);
-    dag.remove_unit(unit);
-    dag.remove_unit(pred);
-    dag.add_dependencies(to_add);
+    dag.fuse_units(dag.get_preds(unit)[0].from(), unit);
 }
 
 void smart_fuse_two_units(pasched::schedule_dag& dag)
@@ -700,9 +578,9 @@ void smart_fuse_two_units(pasched::schedule_dag& dag)
         {
             sched_unit_ptr_t unit = dag.get_units()[u];
 
-            reg_set_t vc = dag.get_reg_create(unit);
-            reg_set_t vu = dag.get_reg_use(unit);
-            reg_set_t vd = dag.get_reg_destroy(unit);
+            sched_reg_set_t vc = dag.get_reg_create(unit);
+            sched_reg_set_t vu = dag.get_reg_use(unit);
+            sched_reg_set_t vd = dag.get_reg_destroy(unit);
             sched_unit_set_t ipreds = dag.get_reachable(unit, sched_dag_t::rf_follow_preds | sched_dag_t::rf_immediate);
             sched_unit_set_t isuccs = dag.get_reachable(unit, sched_dag_t::rf_follow_succs | sched_dag_t::rf_immediate);
 
@@ -896,6 +774,27 @@ void break_symmetrical_branch_merge(pasched::schedule_dag& dag)
     dag.add_dependencies(to_add);
 }
 
+void reg_analysis_info(pasched::schedule_dag& dag)
+{
+    std::cout << "--== Reg analysis ==--\n";
+    for(size_t u = 0; u < dag.get_units().size(); u++)
+    {
+        sched_unit_ptr_t unit = dag.get_units()[u];
+        std::cout << "  Unit: " << unit << "\n";
+        sched_reg_set_t vc = dag.get_reg_create(unit);
+        sched_reg_set_t vu = dag.get_reg_use(unit);
+        sched_reg_set_t vd = dag.get_reg_destroy(unit);
+        sched_reg_set_t vde = dag.get_reg_destroy_exact(unit);
+        sched_reg_set_t vdde = dag.get_reg_dont_destroy_exact(unit);
+
+        std::cout << "    VC  =" << vc << "\n";
+        std::cout << "    VU  =" << vu << "\n";
+        std::cout << "    VD  =" << vd << "\n";
+        std::cout << "    VDE =" << vde << "\n";
+        std::cout << "    VDDE=" << vdde << "\n";
+    }
+}
+
 /**
  * Helper function that split dag with more than one connected component
  */
@@ -1041,6 +940,7 @@ pass_t passes[] =
     {"strip-redundant-data-deps", "", &strip_redundant_data_deps},
     {"smart-fuse-two-units", "", &smart_fuse_two_units},
     {"break-symmetrical-branch-merge", "", &break_symmetrical_branch_merge},
+    {"reg-analysis-info", "", &reg_analysis_info},
     {0}
 };
 

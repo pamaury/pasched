@@ -1,7 +1,9 @@
 #include "sched-dag.hpp"
+#include "sched-dag-viewer.hpp"
 #include "tools.hpp"
 #include <stdexcept>
 #include <queue>
+#include <iostream>
 
 //#define AUTO_CHECK_CONSISTENCY
 
@@ -125,6 +127,212 @@ std::set< schedule_dep::reg_t > schedule_dag::get_reg_destroy(
         continue;
     }
     return s;
+}
+
+std::set< schedule_dep::reg_t > schedule_dag::get_reg_destroy_exact(
+    const schedule_unit *unit)
+{
+    std::set< schedule_dep::reg_t > s;
+    
+    /* For each predecessor P of U */
+    for(size_t i = 0; i < get_preds(unit).size(); i++)
+    {
+        const schedule_dep& dep = get_preds(unit)[i];
+        /* skip dep of it's not a data one */
+        if(dep.kind() != schedule_dep::data_dep)
+            continue;
+        /* For each successor S of P */
+        for(size_t j = 0; j < get_succs(dep.from()).size(); j++)
+        {
+            const schedule_dep& sec_dep = get_succs(dep.from())[j];
+            /* if the S->P link uses the same register as P->U and P<>U
+             * then the register has another use, so we need a complete
+             * analysis */
+            if(sec_dep.kind() == schedule_dep::data_dep &&
+                    sec_dep.reg() == dep.reg() &&
+                    sec_dep.to() != unit)
+            {
+                /* compute reachable set of S and see if U is in */
+                std::set< const schedule_unit * > set = get_reachable(
+                    sec_dep.to(), rf_follow_succs);
+                /* if U is in, then it's ok, otherwise, we can't be sure
+                 * that U destroys the register */
+                if(set.find(unit) == set.end())
+                    goto Lnot_destroy;
+            }
+        }
+        s.insert(dep.reg());
+
+        Lnot_destroy:
+        continue;
+    }
+    return s;
+}
+
+std::set< schedule_dep::reg_t > schedule_dag::get_reg_dont_destroy_exact(
+    const schedule_unit *unit)
+{
+    std::set< schedule_dep::reg_t > s;
+    /* compute reachable set of unit U */
+    std::set< const schedule_unit * > set = get_reachable(unit, rf_follow_succs);
+    
+    /* For each predecessor P of U */
+    for(size_t i = 0; i < get_preds(unit).size(); i++)
+    {
+        const schedule_dep& dep = get_preds(unit)[i];
+        /* skip dep of it's not a data one */
+        if(dep.kind() != schedule_dep::data_dep)
+            continue;
+        /* For each successor S of P */
+        for(size_t j = 0; j < get_succs(dep.from()).size(); j++)
+        {
+            const schedule_dep& sec_dep = get_succs(dep.from())[j];
+            /* if the S->P link uses the same register as P->U and P<>U
+             * then the register has another use, so we need a complete
+             * analysis */
+            if(sec_dep.kind() == schedule_dep::data_dep &&
+                    sec_dep.reg() == dep.reg() &&
+                    sec_dep.to() != unit)
+            {
+                /* if S is in reachable set of U, then the register is
+                 * not destroyed by U because is used later on */
+                if(set.find(sec_dep.to()) != set.end())
+                    goto Lnot_destroy;
+            }
+        }
+        /* if we could not find any other later use, we can't be sure
+         * it is not destroyed */
+        continue;
+
+        Lnot_destroy:
+        s.insert(dep.reg());
+        continue;
+    }
+    return s;
+}
+
+
+chain_schedule_unit *schedule_dag::fuse_units(const schedule_unit *a,
+        const schedule_unit *b)
+{
+    /* create new unit */
+    chain_schedule_unit *c = new chain_schedule_unit;
+    c->get_chain().push_back(a);
+    c->get_chain().push_back(b);
+
+    /* create new dependencies */
+    std::vector< schedule_dep > to_add;
+    for(size_t i = 0; i < get_preds(a).size(); i++)
+    {
+        schedule_dep dep = get_preds(a)[i];
+        dep.set_to(c);
+        to_add.push_back(dep);
+    }
+    for(size_t i = 0; i < get_succs(a).size(); i++)
+    {
+        schedule_dep dep = get_succs(a)[i];
+        /* avoid self loop */
+        if(dep.to() == b)
+            continue;
+        dep.set_from(c);
+        to_add.push_back(dep);
+    }
+    for(size_t i = 0; i < get_preds(b).size(); i++)
+    {
+        schedule_dep dep = get_preds(b)[i];
+        /* avoid self loop */
+        if(dep.from() == a)
+            continue;
+        dep.set_to(c);
+        to_add.push_back(dep);
+    }
+    for(size_t i = 0; i < get_succs(b).size(); i++)
+    {
+        schedule_dep dep = get_succs(b)[i];
+        dep.set_from(c);
+        to_add.push_back(dep);
+    }
+
+    /* compute IRP */
+    std::set< schedule_dep::reg_t > vc = get_reg_create(a);
+    std::set< schedule_dep::reg_t > vu = get_reg_use(b);
+    std::set< schedule_dep::reg_t > vd = get_reg_destroy_exact(b);
+    std::set< schedule_dep::reg_t > vdd = get_reg_dont_destroy_exact(b);
+    std::set< schedule_dep::reg_t > vu_min_vc_min_vdd = set_minus(set_minus(vu, vc), vdd);
+    std::set< schedule_dep::reg_t > vu_plus_vc = set_union(vu, vc);
+    std::set< schedule_dep::reg_t > vc_min_vd = set_minus(vc, vd);
+
+    /**
+     * The IRP of the new units has to take into account three points
+     * 1) The first point is the pressure when a is being executed,
+     *    then the IRP is the sume of IRP(A) plus some pressure induced
+     *    by the registers used by B. The problem is that if we add to
+     *    IRP(A) the number of registers used by b which are not created
+     *    A then we are doing an overapproximation. Indeed, if some
+     *    register, say R1 is created by a unit C and then used by B
+     *    and by another unit D and if for some reason D has to be 
+     *    executed after B then R1 will be counted twice:
+     *    - once in IRP(fuse(A,B))
+     *    - once because of the data link between C and D
+     *    In this case we can remove R1 from the IRP because we _KNOW_
+     *    that R1 is not destroyed by B and used _LATER_.
+     *    So we could say that the variable used by B can be partionned
+     *    in four sets:
+     *    - set of variables which were created by A => see 2)
+     *    - set of variables which are destroyed by B for sure =>
+     *      these must be counted in the IRP because they won't count
+     *      elsewhere
+     *    - set of variable which are not destroyed by B for sure =>
+     *      these must mot be counted in the IRP because we know they
+     *      are used later (ie B is sure to not destroy them) and will
+     *      already be taken into account by data deps
+     *    - set of variable which can or cannot be destroyed by B =>
+     *      we must count them if we want an _OVERAPPROXIMATION_
+     * 2) The second point is between the execution of A and B.
+     *    The internal vairables alive is the set of variable created
+     *    by A plus the set of variable used by B (make the union)
+     * 3) The third point is during the execution of B: the must add
+     *    IRP(B) with the set of variable created by A and which have
+     *    not been destroyed by B
+     */
+
+    /* Optimality check */
+    {
+        std::set< schedule_dep::reg_t > vu_min_vc_min_vdd_min_vd = set_minus(vu_min_vc_min_vdd, vd);
+        if(vu_min_vc_min_vdd_min_vd.size() > 0)
+        {
+            std::cout << "Overapproximation in fuse units:\n";
+            std::cout << "  Unit: " << b->to_string() << "\n";
+        }
+    }
+
+    c->set_internal_register_pressure(
+        std::max(a->internal_register_pressure() + vu_min_vc_min_vdd.size(),
+        std::max(vu_plus_vc.size(),
+                b->internal_register_pressure() + vc_min_vd.size())));
+
+    #if 1
+    {
+        std::vector< pasched::dag_printer_opt > opts;
+        dag_printer_opt o;
+        o.type = dag_printer_opt::po_color_node;
+        o.color_node.unit = a;
+        o.color_node.color = "red";
+        opts.push_back(o);
+        o.color_node.unit = b;
+        opts.push_back(o);
+        debug_view_dag(*this, opts);
+    }
+    #endif
+
+
+    /* change the graph */
+    add_unit(c);
+    remove_unit(a);
+    remove_unit(b);
+    add_dependencies(to_add);
+
+    return c;
 }
 
 /**

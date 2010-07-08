@@ -5,6 +5,7 @@
 #include <vector>
 #include <functional>
 #include <string>
+#include <set>
 
 namespace PAMAURY_SCHEDULER_NS
 {
@@ -51,6 +52,27 @@ bool container_contains(const U& cont, const T& t)
         if(*it == t)
             return true;
     return false;
+}
+
+template<typename T>
+std::set< T > set_minus(const std::set< T >& a, const std::set< T >& b)
+{
+    std::set< T > c = a;
+    typename std::set< T >::const_iterator it = b.begin(), it_end = b.end();
+    while(it != it_end)
+    {
+        c.erase(*it);
+        ++it;
+    }
+    return c;
+}
+
+template<typename T>
+std::set< T > set_union(const std::set< T >& a, const std::set< T >& b)
+{
+    std::set< T > c = a;
+    c.insert(b.begin(), b.end());
+    return c;
 }
 
 std::string trim(const std::string& s);
