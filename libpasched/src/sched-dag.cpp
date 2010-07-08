@@ -213,7 +213,7 @@ std::set< schedule_dep::reg_t > schedule_dag::get_reg_dont_destroy_exact(
 
 
 chain_schedule_unit *schedule_dag::fuse_units(const schedule_unit *a,
-        const schedule_unit *b)
+        const schedule_unit *b, bool simulate_if_approx)
 {
     /* create new unit */
     chain_schedule_unit *c = new chain_schedule_unit;
@@ -301,6 +301,11 @@ chain_schedule_unit *schedule_dag::fuse_units(const schedule_unit *a,
         std::set< schedule_dep::reg_t > vu_min_vc_min_vdd_min_vd = set_minus(vu_min_vc_min_vdd, vd);
         if(vu_min_vc_min_vdd_min_vd.size() > 0)
         {
+            if(simulate_if_approx)
+            {
+                delete c;
+                return 0;
+            }
             std::cout << "Overapproximation in fuse units:\n";
             std::cout << "  Unit: " << b->to_string() << "\n";
         }
@@ -311,7 +316,7 @@ chain_schedule_unit *schedule_dag::fuse_units(const schedule_unit *a,
         std::max(vu_plus_vc.size(),
                 b->internal_register_pressure() + vc_min_vd.size())));
 
-    #if 1
+    #if 0
     {
         std::vector< pasched::dag_printer_opt > opts;
         dag_printer_opt o;

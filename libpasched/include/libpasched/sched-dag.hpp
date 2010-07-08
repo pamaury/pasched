@@ -105,7 +105,10 @@ class schedule_dag
 
     /**
      * Fuse two units by removing them from the graph and replacing
-     * them by a single chain_schedule_unit
+     * them by a single chain_schedule_unit. If simulate_if_approx is
+     * set to true, then the fusing is not done if the IRP computing
+     * can be done optimaly and there is an approximation. In this case,
+     * the function will return 0. 
      *
      * NOTE: the return chain_schedule_unit is not const to allow
      *       further modification
@@ -113,7 +116,7 @@ class schedule_dag
      *       so you can produce illegal graphs with this !
      */
     virtual chain_schedule_unit *fuse_units(const schedule_unit *a,
-        const schedule_unit *b);
+        const schedule_unit *b, bool simulate_if_approx = false);
 };
 
 /**

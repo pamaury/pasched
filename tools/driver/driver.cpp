@@ -551,29 +551,13 @@ void unique_reg_ids(pasched::schedule_dag& dag)
     delete sct;
 }
 
-/**
- * Helper function for fusing
- */
-void fuse_unit_to_successor(pasched::schedule_dag& dag, sched_unit_ptr_t unit)
+void smart_fuse_two_units(pasched::schedule_dag& dag, bool aggressive)
 {
-    if(dag.get_reachable(unit, sched_dag_t::rf_follow_succs | sched_dag_t::rf_immediate).size() != 1)
-        throw std::runtime_error("fuse_unit_to_successor called with invalid parameters");
-        
-    dag.fuse_units(unit, dag.get_succs(unit)[0].to());
-}
-
-void fuse_unit_to_predecessor(pasched::schedule_dag& dag, sched_unit_ptr_t unit)
-{
-    if(dag.get_reachable(unit, sched_dag_t::rf_follow_preds | sched_dag_t::rf_immediate).size() != 1)
-        throw std::runtime_error("fuse_unit_to_predecessor called with invalid parameters");
-
-    dag.fuse_units(dag.get_preds(unit)[0].from(), unit);
-}
-
-void smart_fuse_two_units(pasched::schedule_dag& dag)
-{
+    /* Do two passes: first don't allow approx and then do so */
+    bool allow_approx = false;
+    
     while(true)
-    {
+    {        
         for(size_t u = 0; u < dag.get_units().size(); u++)
         {
             sched_unit_ptr_t unit = dag.get_units()[u];
@@ -600,8 +584,9 @@ void smart_fuse_two_units(pasched::schedule_dag& dag)
             if(ipreds.size() == 1 && vd.size() >= vc.size() &&
                     unit->internal_register_pressure() <= vd.size())
             {
-                fuse_unit_to_predecessor(dag, unit);
-                goto Lgraph_changed;
+                pasched::chain_schedule_unit *c = dag.fuse_units(dag.get_preds(unit)[0].from(), unit, !allow_approx);
+                if(c != 0)
+                    goto Lgraph_changed;
             }
             /* Case 2
              * - unit has one successor only
@@ -612,15 +597,31 @@ void smart_fuse_two_units(pasched::schedule_dag& dag)
             else if(isuccs.size() == 1 && vc.size() >= vu.size() &&
                     unit->internal_register_pressure() <= vc.size())
             {
-                fuse_unit_to_successor(dag, unit);
-                goto Lgraph_changed;
+                pasched::chain_schedule_unit *c = dag.fuse_units(unit, dag.get_succs(unit)[0].to(), !allow_approx);
+                if(c != 0)
+                    goto Lgraph_changed;
             }
         }
-        /* no change, stop */
+        /* no change, stop ? */
+        if(!allow_approx && aggressive)
+        {
+            allow_approx = true;
+            continue;
+        }
         break;
         Lgraph_changed:
         continue;
     }
+}
+
+void smart_fuse_two_units_conservative(pasched::schedule_dag& dag)
+{
+    smart_fuse_two_units(dag, false);
+}
+
+void smart_fuse_two_units_aggressive(pasched::schedule_dag& dag)
+{
+    smart_fuse_two_units(dag, true);
 }
 
 /**
@@ -938,7 +939,8 @@ pass_t passes[] =
     {"mris-ilp-schedule", "Schedule it with the MRIS ILP scheduler", &mris_ilp_schedule},
     {"split-def-use-dom-use-deps", "Split edges from a def to a use which dominates all other uses", &split_def_use_dom_use_deps},
     {"strip-redundant-data-deps", "", &strip_redundant_data_deps},
-    {"smart-fuse-two-units", "", &smart_fuse_two_units},
+    {"smart-fuse-two-units-conservative", "", &smart_fuse_two_units_conservative},
+    {"smart-fuse-two-units-aggressive", "", &smart_fuse_two_units_aggressive},
     {"break-symmetrical-branch-merge", "", &break_symmetrical_branch_merge},
     {"reg-analysis-info", "", &reg_analysis_info},
     {0}
