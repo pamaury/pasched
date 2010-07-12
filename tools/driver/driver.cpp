@@ -99,6 +99,22 @@ std::ostream& operator<<(std::ostream& os, const std::vector< T >& v)
     return os << "]";
 }
 
+class fake_scheduler : public pasched::scheduler
+{
+    public:
+    fake_scheduler(){}
+    virtual ~fake_scheduler(){}
+
+    virtual void schedule(pasched::schedule_dag& d, pasched::schedule_chain& c) const{}
+};
+
+void apply_simple_inplace_transform(pasched::schedule_dag& dag, const pasched::transformation& xfrm)
+{
+    pasched::generic_schedule_chain c;
+    fake_scheduler fs;
+    xfrm.transform(dag, fs, c); 
+}
+
 /**
  * Delete order dependencies that are redundant because they are already
  * enforced by a combinaison of data&order dependencies.
@@ -547,8 +563,7 @@ void mris_ilp_schedule(pasched::schedule_dag& dag)
 void unique_reg_ids(pasched::schedule_dag& dag)
 {
     const pasched::unique_reg_ids uri;
-    const pasched::schedule_chain_transformation *sct= uri.transform(dag);
-    delete sct;
+    apply_simple_inplace_transform(dag, uri);
 }
 
 void smart_fuse_two_units(pasched::schedule_dag& dag, bool aggressive)

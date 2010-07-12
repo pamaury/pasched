@@ -45,7 +45,7 @@ struct instr_regs_info_t
     std::vector< reg_info_t > reg_info;
 };
 
-void mris_ilp_scheduler::schedule(const schedule_dag& dag, schedule_chain& sc) const
+void mris_ilp_scheduler::schedule(schedule_dag& dag, schedule_chain& sc) const
 {
     char name[32];
     // column of z

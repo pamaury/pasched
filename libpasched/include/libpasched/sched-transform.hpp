@@ -3,51 +3,19 @@
 
 #include "sched-dag.hpp"
 #include "sched-chain.hpp"
+#include "scheduler.hpp"
 
 namespace PAMAURY_SCHEDULER_NS
 {
 
-class schedule_chain_transformation
-{
-    public:
-    schedule_chain_transformation();
-    virtual ~schedule_chain_transformation();
-
-    virtual void transform(schedule_chain& sc) const = 0;
-};
-
-class dummy_schedule_chain_transformation : public schedule_chain_transformation
-{
-    public:
-    dummy_schedule_chain_transformation();
-    virtual ~dummy_schedule_chain_transformation();
-
-    virtual void transform(schedule_chain& sc) const;
-};
-
-class chain_expander : public schedule_chain_transformation
-{
-    public:
-    chain_expander();
-    virtual ~chain_expander();
-
-    virtual void transform(schedule_chain& sc) const;
-
-    virtual const std::vector< const chain_schedule_unit *>& expand_list() const;
-    virtual std::vector< const chain_schedule_unit *>& expand_list();
-
-    protected:
-    std::vector< const chain_schedule_unit *> m_expand_list;
-};
-
-class schedule_dag_tranformation
+class transformation
 {
     public:
 
-    schedule_dag_tranformation();
-    virtual ~schedule_dag_tranformation();
+    transformation();
+    virtual ~transformation();
 
-    virtual const schedule_chain_transformation *transform(schedule_dag& sc) const = 0;
+    virtual void transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const = 0;
 };
 
 /**
@@ -55,14 +23,14 @@ class schedule_dag_tranformation
  * and that these IDs are unique among the DAG. This pass handles
  * data dep which already are non-zero but reassign them a new number
  */
-class unique_reg_ids : public schedule_dag_tranformation
+class unique_reg_ids : public transformation
 {
     public:
 
     unique_reg_ids();
     virtual ~unique_reg_ids();
 
-    virtual const schedule_chain_transformation *transform(schedule_dag& sc) const;
+    virtual void transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const;
 };
 
 }

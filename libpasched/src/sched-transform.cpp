@@ -5,66 +5,15 @@
 namespace PAMAURY_SCHEDULER_NS
 {
 
-/**
- * schedule_chain_transformation
- */
-schedule_chain_transformation::schedule_chain_transformation()
-{
-}
-
-schedule_chain_transformation::~schedule_chain_transformation()
-{
-}
-
-/**
- * dummy_schedule_chain_transformation
- */
-dummy_schedule_chain_transformation::dummy_schedule_chain_transformation()
-{
-}
-
-dummy_schedule_chain_transformation::~dummy_schedule_chain_transformation()
-{
-}
-
-void dummy_schedule_chain_transformation::transform(schedule_chain&) const
-{
-}
-
-/**
- * chain_expander
- */
-chain_expander::chain_expander()
-{
-}
-
-chain_expander::~chain_expander()
-{
-}
-
-void chain_expander::transform(schedule_chain&) const
-{
-    throw std::runtime_error("chain_expander_schedule_chain_transformation::transform is unimplemented");
-}
-
-const std::vector< const chain_schedule_unit * >& chain_expander::expand_list() const
-{
-    return m_expand_list;
-}
-
-std::vector< const chain_schedule_unit * >& chain_expander::expand_list()
-{
-    return m_expand_list;
-}
 
 /**
  * schedule_dag_tranformation
  */
-schedule_dag_tranformation::schedule_dag_tranformation()
+transformation::transformation()
 {
 }
 
-schedule_dag_tranformation::~schedule_dag_tranformation()
+transformation::~transformation()
 {
 }
 
@@ -80,7 +29,7 @@ unique_reg_ids::~unique_reg_ids()
 {
 }
 
-const schedule_chain_transformation *unique_reg_ids::transform(schedule_dag& dag) const
+void unique_reg_ids::transform(schedule_dag& dag, const scheduler& s, schedule_chain& c) const
 {
     std::vector< schedule_dep > to_remove;
     std::vector< schedule_dep > to_add;
@@ -107,7 +56,7 @@ const schedule_chain_transformation *unique_reg_ids::transform(schedule_dag& dag
     dag.remove_dependencies(to_remove);
     dag.add_dependencies(to_add);
 
-    return new dummy_schedule_chain_transformation();
+    s.schedule(dag, c);
 }
 
 
