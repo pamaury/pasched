@@ -1,6 +1,7 @@
 #include <sched-transform.hpp>
 #include <sstream>
 #include <stdexcept>
+#include <cassert>
 
 namespace PAMAURY_SCHEDULER_NS
 {
@@ -118,6 +119,109 @@ void unique_reg_ids::transform(schedule_dag& dag, const scheduler& s, schedule_c
 
     dag.remove_dependencies(to_remove);
     dag.add_dependencies(to_add);
+
+    s.schedule(dag, c);
+}
+
+/**
+ * unique_reg_ids
+ */
+
+strip_useless_order_deps::strip_useless_order_deps()
+{
+}
+
+strip_useless_order_deps::~strip_useless_order_deps()
+{
+}
+
+void strip_useless_order_deps::transform(schedule_dag& dag, const scheduler& s, schedule_chain& c) const
+{
+    /* Shortcuts */
+    const std::vector< const schedule_unit * >& units = dag.get_units();
+    size_t n = units.size();
+    /* Map a unit pointer to a number */
+    std::map< const schedule_unit *, size_t > name_map;
+    /* path[u][v] is true if there is a path from u to v */
+    std::vector< std::vector< bool > > path;
+    std::vector< schedule_dep > to_remove;
+
+    /* As a first step, remove duplicate order, that is when
+     * there are several order deps between same pair of units */
+    for(size_t u = 0; u < n; u++)
+    {
+        const schedule_unit *unit = units[u];
+        const std::vector< schedule_dep >& succs = dag.get_succs(unit);
+        for(size_t i = 0; i < succs.size(); i++)
+            for(size_t j = i + 1; j < succs.size(); j++)
+                if(succs[i].kind() == schedule_dep::order_dep &&
+                        succs[j].kind() == schedule_dep::order_dep &&
+                        succs[i].to() == succs[j].to())
+                {
+                    to_remove.push_back(succs[j]);
+                    break;
+                }
+    }
+
+    dag.remove_dependencies(to_remove);
+    to_remove.clear();
+
+    path.resize(n);
+    for(size_t u = 0; u < n; u++)
+    {
+        name_map[units[u]] = u;
+        path[u].resize(n);
+    }
+
+    /* Fill path */
+    for(size_t u = 0; u < n; u++)
+    {
+        std::set< const schedule_unit * > reach = dag.get_reachable(units[u],
+            schedule_dag::rf_follow_succs | schedule_dag::rf_include_unit);
+        std::set< const schedule_unit * >::iterator it = reach.begin();
+        
+        for(; it != reach.end(); ++it)
+            path[u][name_map[*it]] = true;
+    }
+
+    
+
+    /* To remove a dependency, we go through each node U
+     * If for such a node, there are two dependencies A->U and B->U
+     * such that there is a path from A to B (A--->B), and A->U is an
+     * order dep, then A->U is useless */
+    for(size_t u = 0; u < n; u++)
+    {
+        const schedule_unit *unit = units[u];
+        const std::vector< schedule_dep >& preds = dag.get_preds(unit);
+
+        /* Loop through each pair of dep (A->U,B->U) */
+        for(size_t i = 0; i < preds.size(); i++)
+        {
+            size_t i_from = name_map[preds[i].from()];
+            /* Mind the order !
+             * We don't want to treat each pair twice because we would
+             * end up removing each edge twice. Furthermore we should
+             * be careful in such a situation:
+             * A -> U where are two order dep between A and U
+             * then we want to remove only one of them */
+            for(size_t j = i + 1; j < preds.size(); j++)
+            {
+                size_t j_from = name_map[preds[j].from()];
+
+                assert(path[i_from][u] && path[j_from][u]);
+
+                /* Try both order */
+                if(path[i_from][j_from] && preds[i].kind() == schedule_dep::order_dep)
+                    to_remove.push_back(preds[i]);
+                else if(path[j_from][i_from] && preds[j].kind() == schedule_dep::order_dep)
+                    to_remove.push_back(preds[j]);
+            }
+        }
+    }
+
+    for(size_t i = 0; i < to_remove.size(); i++)
+        dag.remove_dependency(to_remove[i]);
 
     s.schedule(dag, c);
 }

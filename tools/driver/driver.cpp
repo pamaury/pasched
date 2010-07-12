@@ -116,100 +116,6 @@ void apply_simple_inplace_transform(pasched::schedule_dag& dag, const pasched::t
 }
 
 /**
- * Delete order dependencies that are redundant because they are already
- * enforced by a combinaison of data&order dependencies.
- * They do not change the scheduling but simplify the graph.
- */
-void strip_useless_order_deps(pasched::schedule_dag& dag)
-{
-    /* Shortcuts */
-    const sched_unit_vec_t& units = dag.get_units();
-    size_t n = units.size();
-    /* Map a unit pointer to a number */
-    std::map< sched_unit_ptr_t, size_t > name_map;
-    /* path[u][v] is true if there is a path from u to v */
-    std::vector< std::vector< bool > > path;
-    sched_dep_vec_t to_remove;
-
-    /* As a first step, remove duplicate order, that is when
-     * there are several order deps between same pair of units */
-    for(size_t u = 0; u < n; u++)
-    {
-        sched_unit_ptr_t unit = units[u];
-        const sched_dep_vec_t& succs = dag.get_succs(unit);
-        for(size_t i = 0; i < succs.size(); i++)
-            for(size_t j = i + 1; j < succs.size(); j++)
-                if(succs[i].kind() == sched_dep_t::order_dep &&
-                        succs[j].kind() == sched_dep_t::order_dep &&
-                        succs[i].to() == succs[j].to())
-                {
-                    to_remove.push_back(succs[j]);
-                    break;
-                }
-    }
-
-    dag.remove_dependencies(to_remove);
-    to_remove.clear();
-
-    path.resize(n);
-    for(size_t u = 0; u < n; u++)
-    {
-        name_map[units[u]] = u;
-        path[u].resize(n);
-    }
-
-    /* Fill path */
-    for(size_t u = 0; u < n; u++)
-    {
-        sched_unit_set_t reach = dag.get_reachable(units[u],
-            sched_dag_t::rf_follow_succs | sched_dag_t::rf_include_unit);
-        sched_unit_set_t::iterator it = reach.begin();
-        
-        for(; it != reach.end(); ++it)
-            path[u][name_map[*it]] = true;
-    }
-
-    
-
-    /* To remove a dependency, we go through each node U
-     * If for such a node, there are two dependencies A->U and B->U
-     * such that there is a path from A to B (A--->B), and A->U is an
-     * order dep, then A->U is useless */
-    for(size_t u = 0; u < n; u++)
-    {
-        sched_unit_ptr_t unit = units[u];
-        const sched_dep_vec_t& preds = dag.get_preds(unit);
-
-        /* Loop through each pair of dep (A->U,B->U) */
-        for(size_t i = 0; i < preds.size(); i++)
-        {
-            size_t i_from = name_map[preds[i].from()];
-            /* Mind the order !
-             * We don't want to treat each pair twice because we would
-             * end up removing each edge twice. Furthermore we should
-             * be careful in such a situation:
-             * A -> U where are two order dep between A and U
-             * then we want to remove only one of them */
-            for(size_t j = i + 1; j < preds.size(); j++)
-            {
-                size_t j_from = name_map[preds[j].from()];
-
-                assert(path[i_from][u] && path[j_from][u]);
-
-                /* Try both order */
-                if(path[i_from][j_from] && preds[i].kind() == sched_dep_t::order_dep)
-                    to_remove.push_back(preds[i]);
-                else if(path[j_from][i_from] && preds[j].kind() == sched_dep_t::order_dep)
-                    to_remove.push_back(preds[j]);
-            }
-        }
-    }
-
-    for(size_t i = 0; i < to_remove.size(); i++)
-        dag.remove_dependency(to_remove[i]);
-}
-
-/**
  * If the graph can be splitted into two subgraph G and H such that
  * the only depdencies between them are:
  * 1) order dep
@@ -564,6 +470,12 @@ void unique_reg_ids(pasched::schedule_dag& dag)
 {
     const pasched::unique_reg_ids uri;
     apply_simple_inplace_transform(dag, uri);
+}
+
+void strip_useless_order_deps(pasched::schedule_dag& dag)
+{
+    const pasched::strip_useless_order_deps suod;
+    apply_simple_inplace_transform(dag, suod);
 }
 
 void smart_fuse_two_units(pasched::schedule_dag& dag, bool aggressive)

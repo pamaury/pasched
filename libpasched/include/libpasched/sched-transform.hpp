@@ -76,6 +76,21 @@ class unique_reg_ids : public transformation
     virtual void transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const;
 };
 
+/**
+ * Delete order dependencies that are redundant because they are already
+ * enforced by a combinaison of data&order dependencies.
+ * They do not change the scheduling but simplify the graph.
+ */
+class strip_useless_order_deps : public transformation
+{
+    public:
+
+    strip_useless_order_deps();
+    virtual ~strip_useless_order_deps();
+
+    virtual void transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const;
+};
+
 }
 
 #endif /* __PAMAURY_SCHED_XFORM_HPP__ */
