@@ -16,8 +16,10 @@ namespace PAMAURY_SCHEDULER_NS
 class schedule_dag
 {
     public:
-    inline schedule_dag(){}
-    inline virtual ~schedule_dag(){}
+    schedule_dag();
+    virtual ~schedule_dag();
+
+    virtual schedule_dag *dup() const = 0;
 
     virtual const std::vector< const schedule_unit * >& get_roots() const = 0;
     virtual const std::vector< const schedule_unit * >& get_leaves() const = 0;
@@ -127,6 +129,8 @@ class generic_schedule_dag : public schedule_dag
     public:
     generic_schedule_dag();
     virtual ~generic_schedule_dag();
+
+    virtual generic_schedule_dag *dup() const;
 
     virtual const std::vector< const schedule_unit *>& get_roots() const { return m_roots; }
     virtual const std::vector< const schedule_unit *>& get_leaves() const { return m_leaves; }

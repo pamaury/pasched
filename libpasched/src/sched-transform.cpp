@@ -2,10 +2,10 @@
 #include <sstream>
 #include <stdexcept>
 #include <cassert>
+#include <algorithm>
 
 namespace PAMAURY_SCHEDULER_NS
 {
-
 
 /**
  * schedule_dag_tranformation
@@ -226,6 +226,114 @@ void strip_useless_order_deps::transform(schedule_dag& dag, const scheduler& s, 
     s.schedule(dag, c);
 }
 
+/**
+ * smart_fuse_two_units
+ */
+
+smart_fuse_two_units::smart_fuse_two_units(bool allow_non_optimal_irp_calculation)
+    :m_allow_non_optimal_irp_calculation(allow_non_optimal_irp_calculation)
+{
+}
+
+smart_fuse_two_units::~smart_fuse_two_units()
+{
+}
+
+void smart_fuse_two_units::transform(schedule_dag& dag, const scheduler& s, schedule_chain& c) const
+{
+    /* Do two passes: first don't allow approx and then do so */
+    bool allow_approx = false;
+    std::vector< chain_schedule_unit * > fused;
+    
+    while(true)
+    {        
+        for(size_t u = 0; u < dag.get_units().size(); u++)
+        {
+            const schedule_unit *unit = dag.get_units()[u];
+
+            std::set< schedule_dep::reg_t > vc = dag.get_reg_create(unit);
+            std::set< schedule_dep::reg_t > vu = dag.get_reg_use(unit);
+            std::set< schedule_dep::reg_t > vd = dag.get_reg_destroy(unit);
+            std::set< const schedule_unit * > ipreds = dag.get_reachable(unit,
+                schedule_dag::rf_follow_preds | schedule_dag::rf_immediate);
+            std::set< const schedule_unit * > isuccs = dag.get_reachable(unit,
+                schedule_dag::rf_follow_succs | schedule_dag::rf_immediate);
+
+            /*
+            std::cout << "Unit: " << unit << "\n";
+            std::cout << "  VC=" << vc << "\n";
+            std::cout << "  VU=" << vu << "\n";
+            std::cout << "  VD=" << vd << "\n";
+            */
+            
+            /* Case 1
+             * - unit has one predecessor only
+             * - unit destroys more variable than it creates ones
+             * - IRP of unit is lower than the number of destroyed variables
+             * Then
+             * - fuse unit to predecessor */
+            if(ipreds.size() == 1 && vd.size() >= vc.size() &&
+                    unit->internal_register_pressure() <= vd.size())
+            {
+                chain_schedule_unit *c = dag.fuse_units(dag.get_preds(unit)[0].from(), unit, !allow_approx);
+                if(c != 0)
+                {
+                    fused.push_back(c);
+                    goto Lgraph_changed;
+                }
+            }
+            /* Case 2
+             * - unit has one successor only
+             * - unit creates more variable than it uses ones
+             * - IRP of unit is lower than the number of created variables
+             * Then
+             * - fuse unit to successor */
+            else if(isuccs.size() == 1 && vc.size() >= vu.size() &&
+                    unit->internal_register_pressure() <= vc.size())
+            {
+                chain_schedule_unit *c = dag.fuse_units(unit, dag.get_succs(unit)[0].to(), !allow_approx);
+                if(c != 0)
+                {
+                    fused.push_back(c);
+                    goto Lgraph_changed;
+                }
+            }
+        }
+        /* no change, stop ? */
+        if(!allow_approx && m_allow_non_optimal_irp_calculation)
+        {
+            allow_approx = true;
+            continue;
+        }
+        break;
+        Lgraph_changed:
+        continue;
+    }
+
+    /* schedule DAG */
+    s.schedule(dag, c);
+
+    /* unfuse units */
+    std::reverse(fused.begin(), fused.end());
+
+    for(size_t i = 0; i < fused.size(); i++)
+    {
+        size_t j;
+        for(j = 0; j < c.get_unit_count(); j++)
+        {
+            if(c.get_unit_at(j) == fused[i])
+                break;
+        }
+        if(j == c.get_unit_count())
+            throw std::runtime_error("smart_fuse_two_units::transform detected inconsistent schedule chain");
+
+        c.remove_unit_at(j);
+        for(size_t k = 0; k < fused[i]->get_chain().size(); k++)
+            c.insert_unit_at(j + k, fused[i]->get_chain()[k]);
+        /* FIXME: commented for debug reasons */
+        //delete fused[i];
+    }
+}
 
 }
 

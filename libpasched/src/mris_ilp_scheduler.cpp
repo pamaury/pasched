@@ -556,7 +556,7 @@ void mris_ilp_scheduler::schedule(schedule_dag& dag, schedule_chain& sc) const
     */
 
     for(unsigned u = 0; u < n; u++)
-        sc.emit_unit(units[placement[u]]);
+        sc.append_unit(units[placement[u]]);
     
     glp_delete_prob(p);
 }

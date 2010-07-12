@@ -11,7 +11,6 @@ namespace PAMAURY_SCHEDULER_NS
 class transformation
 {
     public:
-
     transformation();
     virtual ~transformation();
 
@@ -34,7 +33,6 @@ class glued_transformation_scheduler : public scheduler
 class packed_transformation : public transformation
 {
     public:
-
     packed_transformation(const transformation *first, const transformation *second);
     ~packed_transformation();
 
@@ -48,7 +46,6 @@ class packed_transformation : public transformation
 class transformation_pipeline : public transformation
 {
     public:
-
     transformation_pipeline();
     ~transformation_pipeline();
 
@@ -69,7 +66,6 @@ class transformation_pipeline : public transformation
 class unique_reg_ids : public transformation
 {
     public:
-
     unique_reg_ids();
     virtual ~unique_reg_ids();
 
@@ -84,11 +80,25 @@ class unique_reg_ids : public transformation
 class strip_useless_order_deps : public transformation
 {
     public:
-
     strip_useless_order_deps();
     virtual ~strip_useless_order_deps();
 
     virtual void transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const;
+};
+
+/**
+ *
+ */
+class smart_fuse_two_units : public transformation
+{
+    public:
+    smart_fuse_two_units(bool allow_non_optimal_irp_calculation);
+    virtual ~smart_fuse_two_units();
+
+    virtual void transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const;
+
+    public:
+    bool m_allow_non_optimal_irp_calculation;
 };
 
 }

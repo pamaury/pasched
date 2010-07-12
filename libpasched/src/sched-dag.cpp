@@ -13,6 +13,14 @@ namespace PAMAURY_SCHEDULER_NS
 /**
  * Interface Implementation
  */
+schedule_dag::schedule_dag()
+{
+}
+
+schedule_dag::~schedule_dag()
+{
+}
+
 void schedule_dag::add_dependencies(const std::vector< schedule_dep >& deps)
 {
     for(size_t i = 0; i < deps.size(); i++)
@@ -351,6 +359,11 @@ generic_schedule_dag::generic_schedule_dag()
 
 generic_schedule_dag::~generic_schedule_dag()
 {
+}
+
+generic_schedule_dag *generic_schedule_dag::dup() const
+{
+    return new generic_schedule_dag(*this);
 }
 
 bool generic_schedule_dag::modified() const

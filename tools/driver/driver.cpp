@@ -102,16 +102,41 @@ std::ostream& operator<<(std::ostream& os, const std::vector< T >& v)
 class fake_scheduler : public pasched::scheduler
 {
     public:
-    fake_scheduler(){}
+    fake_scheduler(bool consistent):m_consistent(consistent){}
     virtual ~fake_scheduler(){}
 
-    virtual void schedule(pasched::schedule_dag& d, pasched::schedule_chain& c) const{}
+    virtual void schedule(pasched::schedule_dag& d, pasched::schedule_chain& c) const
+    {
+        if(!m_consistent)
+            return;
+        #if 0
+        pasched::schedule_dag *dag = d.dup();
+        /* do a stupid and inefficient list scheduling */
+
+        while(dag->get_roots_units().size() > 0)
+        {
+            c.append_unit(dag->get_roots()[0]);
+            dag->remove_unit(dag->get_roots()[0]);
+        }
+
+        delete dag;
+        #else
+        for(size_t u = 0; u < d.get_units().size(); u++)
+            c.append_unit(d.get_units()[u]);
+        #endif
+    }
+
+    protected:
+    bool m_consistent;
 };
 
-void apply_simple_inplace_transform(pasched::schedule_dag& dag, const pasched::transformation& xfrm)
+void apply_simple_inplace_transform(
+    pasched::schedule_dag& dag,
+    const pasched::transformation& xfrm,
+    bool need_consistent_scheduler)
 {
     pasched::generic_schedule_chain c;
-    fake_scheduler fs;
+    fake_scheduler fs(need_consistent_scheduler);
     xfrm.transform(dag, fs, c); 
 }
 
@@ -469,86 +494,29 @@ void mris_ilp_schedule(pasched::schedule_dag& dag)
 void unique_reg_ids(pasched::schedule_dag& dag)
 {
     const pasched::unique_reg_ids uri;
-    apply_simple_inplace_transform(dag, uri);
+    apply_simple_inplace_transform(dag, uri, false);
 }
 
 void strip_useless_order_deps(pasched::schedule_dag& dag)
 {
     const pasched::strip_useless_order_deps suod;
-    apply_simple_inplace_transform(dag, suod);
+    apply_simple_inplace_transform(dag, suod, false);
 }
 
 void smart_fuse_two_units(pasched::schedule_dag& dag, bool aggressive)
 {
-    /* Do two passes: first don't allow approx and then do so */
-    bool allow_approx = false;
-    
-    while(true)
-    {        
-        for(size_t u = 0; u < dag.get_units().size(); u++)
-        {
-            sched_unit_ptr_t unit = dag.get_units()[u];
-
-            sched_reg_set_t vc = dag.get_reg_create(unit);
-            sched_reg_set_t vu = dag.get_reg_use(unit);
-            sched_reg_set_t vd = dag.get_reg_destroy(unit);
-            sched_unit_set_t ipreds = dag.get_reachable(unit, sched_dag_t::rf_follow_preds | sched_dag_t::rf_immediate);
-            sched_unit_set_t isuccs = dag.get_reachable(unit, sched_dag_t::rf_follow_succs | sched_dag_t::rf_immediate);
-
-            /*
-            std::cout << "Unit: " << unit << "\n";
-            std::cout << "  VC=" << vc << "\n";
-            std::cout << "  VU=" << vu << "\n";
-            std::cout << "  VD=" << vd << "\n";
-            */
-            
-            /* Case 1
-             * - unit has one predecessor only
-             * - unit destroys more variable than it creates ones
-             * - IRP of unit is lower than the number of destroyed variables
-             * Then
-             * - fuse unit to predecessor */
-            if(ipreds.size() == 1 && vd.size() >= vc.size() &&
-                    unit->internal_register_pressure() <= vd.size())
-            {
-                pasched::chain_schedule_unit *c = dag.fuse_units(dag.get_preds(unit)[0].from(), unit, !allow_approx);
-                if(c != 0)
-                    goto Lgraph_changed;
-            }
-            /* Case 2
-             * - unit has one successor only
-             * - unit creates more variable than it uses ones
-             * - IRP of unit is lower than the number of created variables
-             * Then
-             * - fuse unit to successor */
-            else if(isuccs.size() == 1 && vc.size() >= vu.size() &&
-                    unit->internal_register_pressure() <= vc.size())
-            {
-                pasched::chain_schedule_unit *c = dag.fuse_units(unit, dag.get_succs(unit)[0].to(), !allow_approx);
-                if(c != 0)
-                    goto Lgraph_changed;
-            }
-        }
-        /* no change, stop ? */
-        if(!allow_approx && aggressive)
-        {
-            allow_approx = true;
-            continue;
-        }
-        break;
-        Lgraph_changed:
-        continue;
-    }
+    pasched::smart_fuse_two_units sftu(aggressive);
+    apply_simple_inplace_transform(dag, sftu, true);
 }
 
 void smart_fuse_two_units_conservative(pasched::schedule_dag& dag)
 {
-    smart_fuse_two_units(dag, false);
+    ::smart_fuse_two_units(dag, false);
 }
 
 void smart_fuse_two_units_aggressive(pasched::schedule_dag& dag)
 {
-    smart_fuse_two_units(dag, true);
+    ::smart_fuse_two_units(dag, true);
 }
 
 /**
