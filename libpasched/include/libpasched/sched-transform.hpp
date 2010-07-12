@@ -18,6 +18,49 @@ class transformation
     virtual void transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const = 0;
 };
 
+class glued_transformation_scheduler : public scheduler
+{
+    public:
+    glued_transformation_scheduler(const transformation *tranform, const scheduler *sched);
+    virtual ~glued_transformation_scheduler();
+
+    virtual void schedule(schedule_dag& d, schedule_chain& c) const;
+
+    protected:
+    const transformation *m_transform;
+    const scheduler *m_scheduler;
+};
+
+class packed_transformation : public transformation
+{
+    public:
+
+    packed_transformation(const transformation *first, const transformation *second);
+    ~packed_transformation();
+
+    virtual void transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const;
+
+    protected:
+    const transformation *m_first;
+    const transformation *m_second;
+};
+
+class transformation_pipeline : public transformation
+{
+    public:
+
+    transformation_pipeline();
+    ~transformation_pipeline();
+
+    virtual void add_stage(const transformation *tranform);
+
+    virtual void transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const;
+    
+    protected:
+    std::vector< const transformation * > m_pipeline;
+    std::vector< packed_transformation * > m_packers;
+};
+
 /**
  * Make sure every data dependency has a non-zero register ID
  * and that these IDs are unique among the DAG. This pass handles
