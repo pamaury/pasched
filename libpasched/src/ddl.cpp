@@ -37,6 +37,11 @@ const ddl_schedule_unit *ddl_schedule_unit::dup() const
     return new ddl_schedule_unit(*this);
 }
 
+const ddl_schedule_unit *ddl_schedule_unit::deep_dup() const
+{
+    return dup();
+}
+
 std::vector< std::string >& ddl_schedule_unit::out()
 {
     return m_out;

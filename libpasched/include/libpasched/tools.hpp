@@ -75,6 +75,14 @@ std::set< T > set_union(const std::set< T >& a, const std::set< T >& b)
     return c;
 }
 
+template<typename T>
+std::vector< T > set_to_vector(const std::set< T >& s)
+{
+    std::vector< T > v;
+    v.insert(v.begin(), s.begin(), s.end());
+    return v;
+}
+
 std::string trim(const std::string& s);
 
 }

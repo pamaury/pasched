@@ -21,6 +21,33 @@ schedule_dag::~schedule_dag()
 {
 }
 
+schedule_dag *schedule_dag::deep_dup() const
+{
+    /* poor's man deep_dup */
+    schedule_dag *dag = dup();
+    dag->clear();
+    
+    std::map< const schedule_unit *, const schedule_unit *> map;
+
+    for(size_t u = 0; u < get_units().size(); u++)
+    {
+        const schedule_unit *unit = get_units()[u];
+        map[unit] = unit->deep_dup();
+        dag->add_unit(map[unit]);
+    }
+
+    std::vector< schedule_dep > to_add;
+    for(size_t i = 0; i < get_deps().size(); i++)
+    {
+        schedule_dep dep = get_deps()[i];
+        dep.set_from(map[dep.from()]);
+        dep.set_to(map[dep.to()]);
+        to_add.push_back(dep);
+    }
+    dag->add_dependencies(to_add);
+    return dag;
+}
+
 void schedule_dag::add_dependencies(const std::vector< schedule_dep >& deps)
 {
     for(size_t i = 0; i < deps.size(); i++)
@@ -364,7 +391,6 @@ void schedule_dag::collapse_subgraph(const std::set< const schedule_unit * >& su
         const schedule_unit *new_unit)
 {
     std::vector< schedule_dep > to_add;
-    std::vector< const schedule_unit * > to_remove;
 
     for(size_t u = 0; u < get_units().size(); u++)
     {
@@ -394,8 +420,7 @@ void schedule_dag::collapse_subgraph(const std::set< const schedule_unit * >& su
     }
 
     /* remove all units from the subgraph */
-    to_remove.insert(to_remove.begin(), sub.begin(), sub.end());
-    remove_units(to_remove);
+    remove_units(set_to_vector(sub));
     /* add the new unit */
     add_unit(new_unit);
     /* add new dependencies */

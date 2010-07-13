@@ -42,6 +42,7 @@ class ddl_schedule_unit : public schedule_unit
     virtual std::string to_string() const;
 
     virtual const ddl_schedule_unit *dup() const;
+    virtual const ddl_schedule_unit *deep_dup() const;
 
     virtual unsigned internal_register_pressure() const;
 

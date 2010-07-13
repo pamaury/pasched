@@ -99,155 +99,34 @@ std::ostream& operator<<(std::ostream& os, const std::vector< T >& v)
     return os << "]";
 }
 
-class fake_scheduler : public pasched::scheduler
+class dag_accumulator : public pasched::transformation
 {
     public:
-    fake_scheduler(bool consistent):m_consistent(consistent){}
-    virtual ~fake_scheduler(){}
+    dag_accumulator() {}
+    virtual ~dag_accumulator() {}
 
-    virtual void schedule(pasched::schedule_dag& d, pasched::schedule_chain& c) const
+    virtual void transform(pasched::schedule_dag& dag, const pasched::scheduler& s, pasched::schedule_chain& c) const
     {
-        if(!m_consistent)
-            return;
-        #if 0
-        pasched::schedule_dag *dag = d.dup();
-        /* do a stupid and inefficient list scheduling */
-
-        while(dag->get_roots_units().size() > 0)
-        {
-            c.append_unit(dag->get_roots()[0]);
-            dag->remove_unit(dag->get_roots()[0]);
-        }
-
-        delete dag;
-        #else
-        for(size_t u = 0; u < d.get_units().size(); u++)
-            c.append_unit(d.get_units()[u]);
-        #endif
+        pasched::schedule_dag *d = dag.deep_dup();
+        /* accumulate */
+        m_dag.add_units(d->get_units());
+        m_dag.add_dependencies(d->get_deps());
+        delete d;
+        /* forward */
+        s.schedule(dag, c);
     }
+
+    pasched::schedule_dag& get_dag() { return m_dag; }
 
     protected:
-    bool m_consistent;
+    /* Little hack here. A transformation is not supposed to keep internal state but here
+     * we want to accumulate DAGs scheduled so we keep a mutable var */
+    mutable pasched::generic_schedule_dag m_dag;
 };
 
-void apply_simple_inplace_transform(
-    pasched::schedule_dag& dag,
-    const pasched::transformation& xfrm,
-    bool need_consistent_scheduler)
+const pasched::transformation *simplify_order_cuts()
 {
-    pasched::generic_schedule_chain c;
-    fake_scheduler fs(need_consistent_scheduler);
-    xfrm.transform(dag, fs, c); 
-}
-
-/**
- * If the graph can be splitted into two subgraph G and H such that
- * the only depdencies between them are:
- * 1) order dep
- * 2) go from G to H (G->H)
- * Then it means that we can schedule G as a whole and then H as a whole
- * because they do not interfere. So we can cut all these dependencies
- * because they make the graph appear as more complicated than it really
- * is */
-void simplify_order_cuts(pasched::schedule_dag& dag)
-{
-    const sched_unit_vec_t& units = dag.get_units();
-    size_t n = units.size();
-    std::map< sched_unit_ptr_t, size_t > name_map;
-
-    for(size_t u = 0; u < n; u++)
-        name_map[units[u]] = u;
-
-    /* Repeat until no change because a cut can lead to other cuts
-     * which were unavailable before */
-    while(true)
-    {
-        bool graph_changed = false;
-        /* Keep a map of proceeded nodes, to avoiding proceeding a node twice */
-        std::vector < bool > proceeded;
-        proceeded.resize(n);
-
-        for(size_t u = 0; u < n; u++)
-        {
-            if(proceeded[u])
-                continue;
-            std::set< size_t > component;
-            std::queue< size_t > to_process;
-            sched_dep_vec_t to_remove;
-
-            /* For a node U, we compute the largest component C which
-             * contains U and which is stable by these operations:
-             * 1) If A is in C and A->B is a data dep, B is in C
-             * 2) If A is in C and B->A is a data dep, B is in C
-             * 2) If A is in C and B->A is an order dep, B is in C
-             * then we go through all the order edges that go out of C
-             * and cut them because we are sure that the only edges going
-             * out of C are order dep and that there are not edges going
-             * in C */
-
-            /* start with U */
-            component.insert(u);
-            to_process.push(u);
-
-            while(!to_process.empty())
-            {
-                /* For a node A */
-                size_t node = to_process.front();
-                to_process.pop();
-
-                /* Add all nodes B such that there is a dep B->A */
-                for(size_t i = 0; i < dag.get_preds(units[node]).size(); i++)
-                {
-                    const sched_dep_t& d = dag.get_preds(units[node])[i];
-                    size_t i_idx = name_map[d.from()];
-                    if(component.find(i_idx) != component.end())
-                        continue;
-                    component.insert(i_idx);
-                    to_process.push(i_idx);
-                }
-
-                /* Add all nodes B such that there is a data dep A->B */
-                for(size_t i = 0; i < dag.get_succs(units[node]).size(); i++)
-                {
-                    const sched_dep_t& d = dag.get_succs(units[node])[i];
-                    if(d.kind() == sched_dep_t::order_dep)
-                        continue;
-                    size_t i_idx = name_map[d.to()];
-                    if(component.find(i_idx) != component.end())
-                        continue;
-                    component.insert(i_idx);
-                    to_process.push(i_idx);
-                }
-            }
-
-            std::set< size_t >::iterator it = component.begin();
-            std::set< size_t >::iterator it_end = component.end();
-
-            /* Delete all order edges going out of the component */
-            for(; it != it_end; ++it)
-            {
-                for(size_t i = 0; i < dag.get_succs(units[*it]).size(); i++)
-                {
-                    const sched_dep_t& d = dag.get_succs(units[*it])[i];
-                    if(d.kind() != sched_dep_t::order_dep)
-                        continue;
-                    size_t i_idx = name_map[d.to()];
-                    if(component.find(i_idx) != component.end())
-                        continue;
-                    to_remove.push_back(d);
-                }
-            }
-
-            if(to_remove.size() == 0)
-                continue;
-            graph_changed = true;
-            for(size_t i = 0; i < to_remove.size(); i++)
-                dag.remove_dependency(to_remove[i]);
-        }
-
-        if(!graph_changed)
-            break;
-    }
+    return new pasched::simplify_order_cuts;
 }
 
 /**
@@ -491,32 +370,29 @@ void mris_ilp_schedule(pasched::schedule_dag& dag)
     }
 }
 
-void unique_reg_ids(pasched::schedule_dag& dag)
+const pasched::transformation *unique_reg_ids()
 {
-    const pasched::unique_reg_ids uri;
-    apply_simple_inplace_transform(dag, uri, false);
+    return new pasched::unique_reg_ids;
 }
 
-void strip_useless_order_deps(pasched::schedule_dag& dag)
+const pasched::transformation *strip_useless_order_deps()
 {
-    const pasched::strip_useless_order_deps suod;
-    apply_simple_inplace_transform(dag, suod, false);
+    return new pasched::strip_useless_order_deps;
 }
 
-void smart_fuse_two_units(pasched::schedule_dag& dag, bool aggressive)
+const pasched::transformation *smart_fuse_two_units(bool aggressive)
 {
-    pasched::smart_fuse_two_units sftu(aggressive);
-    apply_simple_inplace_transform(dag, sftu, true);
+    return new pasched::smart_fuse_two_units(aggressive);
 }
 
-void smart_fuse_two_units_conservative(pasched::schedule_dag& dag)
+const pasched::transformation *smart_fuse_two_units_conservative()
 {
-    ::smart_fuse_two_units(dag, false);
+    return smart_fuse_two_units(false);
 }
 
-void smart_fuse_two_units_aggressive(pasched::schedule_dag& dag)
+const pasched::transformation *smart_fuse_two_units_aggressive()
 {
-    ::smart_fuse_two_units(dag, true);
+    return smart_fuse_two_units(true);
 }
 
 /**
@@ -792,7 +668,7 @@ void merge_dag_list(std::list< pasched::generic_schedule_dag >& list, pasched::s
  */
 typedef void (*read_cb_t)(const char *filename, pasched::schedule_dag& dag);
 typedef void (*write_cb_t)(pasched::schedule_dag& dag, const char *filename);
-typedef void (*pass_cb_t)(pasched::schedule_dag& dag);
+typedef const pasched::transformation * (*pass_factory_t)();
 
 struct format_t
 {
@@ -807,7 +683,7 @@ struct pass_t
 {
     const char *name;
     const char *desc;
-    pass_cb_t apply;
+    pass_factory_t factory;
 };
 
 const char *ddl_ext[] = {"ddl", 0};
@@ -828,16 +704,16 @@ format_t formats[] =
 pass_t passes[] =
 {
     {"unique-reg-ids", "Number data dependencies to have unique register IDs", &unique_reg_ids},
-    {"strip-nrinro-costless-units", "Strip no-register-in no-register-out costless units", &strip_nrinro_costless_units},
+    //{"strip-nrinro-costless-units", "Strip no-register-in no-register-out costless units", &strip_nrinro_costless_units},
     {"strip-useless-order-deps", "Strip order dependencies already enforced by order depedencies", &strip_useless_order_deps},
     {"simplify-order-cuts", "Simplify the graph by finding one way cuts made of order dependencies", &simplify_order_cuts},
-    {"mris-ilp-schedule", "Schedule it with the MRIS ILP scheduler", &mris_ilp_schedule},
-    {"split-def-use-dom-use-deps", "Split edges from a def to a use which dominates all other uses", &split_def_use_dom_use_deps},
-    {"strip-redundant-data-deps", "", &strip_redundant_data_deps},
+    //{"mris-ilp-schedule", "Schedule it with the MRIS ILP scheduler", &mris_ilp_schedule},
+    //{"split-def-use-dom-use-deps", "Split edges from a def to a use which dominates all other uses", &split_def_use_dom_use_deps},
+    //{"strip-redundant-data-deps", "", &strip_redundant_data_deps},
     {"smart-fuse-two-units-conservative", "", &smart_fuse_two_units_conservative},
     {"smart-fuse-two-units-aggressive", "", &smart_fuse_two_units_aggressive},
-    {"break-symmetrical-branch-merge", "", &break_symmetrical_branch_merge},
-    {"reg-analysis-info", "", &reg_analysis_info},
+    //{"break-symmetrical-branch-merge", "", &break_symmetrical_branch_merge},
+    //{"reg-analysis-info", "", &reg_analysis_info},
     {0}
 };
 
@@ -915,7 +791,7 @@ int __main(int argc, char **argv)
         return 1;
     }
 
-    std::list< pasched::generic_schedule_dag > dag_list;
+    /* read DAG */
     pasched::generic_schedule_dag dag;
     formats[from].read(argv[2], dag);
     if(!dag.is_consistent())
@@ -923,9 +799,9 @@ int __main(int argc, char **argv)
         std::cout << "Internal error, schedule DAG is not consistent !\n";
         return 1;
     }
-    dag_list.push_front(dag);
-    branch_dag_list(dag_list);
 
+    pasched::transformation_pipeline pipeline;
+    /* build pipeline */
     for(int i = 5; i < argc; i++)
     {
         int j = 0;
@@ -938,26 +814,19 @@ int __main(int argc, char **argv)
             return 1;
         }
 
-        std::list< pasched::generic_schedule_dag >::iterator it = dag_list.begin();
-        std::list< pasched::generic_schedule_dag >::iterator it_end = dag_list.end();
-        
-        for(; it != it_end; ++it)
-        {
-            passes[j].apply(*it);
-            if(!it->is_consistent())
-            {
-                std::cout << "Internal error, schedule DAG is not consistent !\n";
-                return 1;
-            }
-        }
-        
-        branch_dag_list(dag_list);
+        pipeline.add_stage(passes[j].factory());
     }
 
-    dag.clear();
-    merge_dag_list(dag_list, dag);
+    /* add accumulator */
+    dag_accumulator accumulator;
+    pipeline.add_stage(&accumulator);
+
+    /* run pipeline with stupid scheduler */
+    pasched::basic_list_scheduler sched;
+    pasched::generic_schedule_chain chain;
+    pipeline.transform(dag, sched, chain);
     
-    formats[to].write(dag, argv[4]);
+    formats[to].write(accumulator.get_dag(), argv[4]);
     
     return 0;
 }

@@ -22,6 +22,11 @@ const lsd_schedule_unit *lsd_schedule_unit::dup() const
     return new lsd_schedule_unit(*this);
 }
 
+const lsd_schedule_unit *lsd_schedule_unit::deep_dup() const
+{
+    return dup();
+}
+
 void build_schedule_dag_from_lsd_file(const char *filename, schedule_dag& dag)
 {
     std::ifstream fin(filename);

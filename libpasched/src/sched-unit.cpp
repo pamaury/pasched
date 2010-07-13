@@ -47,6 +47,14 @@ const chain_schedule_unit *chain_schedule_unit::dup() const
     return new chain_schedule_unit(*this);
 }
 
+const chain_schedule_unit *chain_schedule_unit::deep_dup() const
+{
+    chain_schedule_unit *c = new chain_schedule_unit;
+    for(size_t i = 0; i < m_chain.size(); i++)
+        c->get_chain().push_back(m_chain[i]->deep_dup());
+    return c;
+}
+
 unsigned chain_schedule_unit::internal_register_pressure() const
 {
     return m_irp;

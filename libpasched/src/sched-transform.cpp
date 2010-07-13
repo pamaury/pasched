@@ -1,4 +1,5 @@
 #include <sched-transform.hpp>
+#include <tools.hpp>
 #include <sstream>
 #include <stdexcept>
 #include <cassert>
@@ -71,14 +72,20 @@ transformation_pipeline::~transformation_pipeline()
 void transformation_pipeline::add_stage(const transformation *transform)
 {
     m_pipeline.push_back(transform);
-    m_packers.push_back(new packed_transformation(m_packers.back(), transform));
+    if(m_packers.size() > 0)
+        m_packers.push_back(new packed_transformation(m_packers.back(), transform));
+    else if(m_pipeline.size() == 2)
+        m_packers.push_back(new packed_transformation(m_pipeline[0], m_pipeline[1]));
 }
 
 void transformation_pipeline::transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const
 {
-    if(m_packers.size() == 0)
+    if(m_pipeline.size() == 0)
         throw std::runtime_error("transformation_pipeline::transform called with empty pipeline");
-    m_packers.back()->transform(d, s, c);
+    if(m_packers.size() > 0)
+        m_packers.back()->transform(d, s, c);
+    else
+        m_pipeline[0]->transform(d, s, c);
 }
 
 /**
@@ -330,9 +337,55 @@ void smart_fuse_two_units::transform(schedule_dag& dag, const scheduler& s, sche
         c.remove_unit_at(j);
         for(size_t k = 0; k < fused[i]->get_chain().size(); k++)
             c.insert_unit_at(j + k, fused[i]->get_chain()[k]);
-        /* FIXME: commented for debug reasons */
-        //delete fused[i];
+        delete fused[i];
     }
+}
+
+/**
+ * simplify_order_cuts
+ */
+
+simplify_order_cuts::simplify_order_cuts()
+{
+}
+
+simplify_order_cuts::~simplify_order_cuts()
+{
+}
+
+void simplify_order_cuts::transform(schedule_dag& dag, const scheduler& s, schedule_chain& c) const
+{
+    for(size_t u = 0; u < dag.get_units().size(); u++)
+    {
+        /* pick the first unit */
+        const schedule_unit *unit = dag.get_units()[u];
+        /* Compute the largest component C which
+         * contains U and which is stable by these operations:
+         * 1) If A is in C and A->B is a data dep, B is in C
+         * 2) If A is in C and B->A is a data dep, B is in C
+         * 2) If A is in C and B->A is an order dep, B is in C
+         */
+        std::set< const schedule_unit * > reach = dag.get_reachable(unit,
+            schedule_dag::rf_include_unit | schedule_dag::rf_follow_preds | schedule_dag::rf_follow_succs_data);
+
+        /* handle trivial case where the whole graph is reachable */
+        if(reach.size() == dag.get_units().size())
+            continue;
+
+        /* extract this subgraph for further analysis */
+        schedule_dag *top = dag.dup_subgraph(reach);
+        dag.remove_units(set_to_vector(reach));
+
+        /* recursively transform top */
+        transform(*top, s, c);
+        /* and then bottom */
+        transform(dag, s, c);
+
+        return;
+    }
+
+    /* otherwise, schedule the whole graph */
+    s.schedule(dag, c);
 }
 
 }

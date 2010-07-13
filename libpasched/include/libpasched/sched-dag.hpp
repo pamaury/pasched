@@ -19,7 +19,15 @@ class schedule_dag
     schedule_dag();
     virtual ~schedule_dag();
 
+    /**
+     * Duplicate the graph
+     */
     virtual schedule_dag *dup() const = 0;
+    /**
+     * Duplicate the graph and the schedule units
+     */
+    virtual schedule_dag *deep_dup() const;
+    
 
     virtual const std::vector< const schedule_unit * >& get_roots() const = 0;
     virtual const std::vector< const schedule_unit * >& get_leaves() const = 0;

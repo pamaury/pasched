@@ -19,6 +19,15 @@ class scheduler
     protected:
 };
 
+class basic_list_scheduler : public pasched::scheduler
+{
+    public:
+    basic_list_scheduler();
+    virtual ~basic_list_scheduler();
+
+    virtual void schedule(pasched::schedule_dag& d, pasched::schedule_chain& c) const;
+};
+
 /**
  * Mimimum Register Instruction Scheduling
  * optimal solution using an alternative ilp

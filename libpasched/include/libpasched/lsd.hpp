@@ -58,6 +58,7 @@ class lsd_schedule_unit : public schedule_unit
     std::string& name() { return m_name; }
 
     virtual const lsd_schedule_unit *dup() const;
+    virtual const lsd_schedule_unit *deep_dup() const;
 
     virtual unsigned internal_register_pressure() const;
 

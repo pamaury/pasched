@@ -49,7 +49,7 @@ class transformation_pipeline : public transformation
     transformation_pipeline();
     ~transformation_pipeline();
 
-    virtual void add_stage(const transformation *tranform);
+    virtual void add_stage(const transformation *transform);
 
     virtual void transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const;
     
@@ -102,7 +102,14 @@ class smart_fuse_two_units : public transformation
 };
 
 /**
- *
+ * If the graph can be splitted into two subgraph G and H such that
+ * the only depdencies between them are:
+ * 1) order dep
+ * 2) go from G to H (G->H)
+ * Then it means that we can schedule G as a whole and then H as a whole
+ * because they do not interfere. So we can cut all these dependencies
+ * because they make the graph appear as more complicated than it really
+ * is.
  */
 class simplify_order_cuts : public transformation
 {

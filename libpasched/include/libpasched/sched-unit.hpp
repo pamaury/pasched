@@ -66,6 +66,7 @@ class schedule_unit
     virtual std::string to_string() const = 0;
 
     virtual const schedule_unit *dup() const = 0;
+    virtual const schedule_unit *deep_dup() const = 0;
 
     /**
      * Internal egister pressure when executing this schedule unit
@@ -87,6 +88,7 @@ class chain_schedule_unit : public schedule_unit
     virtual std::string to_string() const;
 
     virtual const chain_schedule_unit *dup() const;
+    virtual const chain_schedule_unit *deep_dup() const;
 
     virtual unsigned internal_register_pressure() const;
 
