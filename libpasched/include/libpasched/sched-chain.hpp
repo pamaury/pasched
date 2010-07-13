@@ -23,6 +23,11 @@ class schedule_chain
     virtual void set_unit_at(size_t pos, const schedule_unit *) = 0;
     virtual void insert_unit_at(size_t pos, const schedule_unit *) = 0;
     virtual void remove_unit_at(size_t pos) = 0;
+    virtual void insert_units_at(size_t pos, const std::vector< const schedule_unit * >&) = 0;
+    virtual void insert_units_at(size_t pos, const schedule_chain& c) = 0;
+    virtual void expand_unit_at(size_t pos, const std::vector< const schedule_unit * >&) = 0;
+    virtual void expand_unit_at(size_t pos, const schedule_chain& c) = 0;
+    
     virtual void append_unit(const schedule_unit *unit) = 0;
 
     protected:
@@ -42,8 +47,13 @@ class generic_schedule_chain : public schedule_chain
     virtual void set_unit_at(size_t pos, const schedule_unit *);
     virtual void insert_unit_at(size_t pos, const schedule_unit *);
     virtual void remove_unit_at(size_t pos);
+    virtual void insert_units_at(size_t pos, const std::vector< const schedule_unit * >& v);
+    virtual void insert_units_at(size_t pos, const schedule_chain& c);
+    virtual void expand_unit_at(size_t pos, const std::vector< const schedule_unit * >& v);
+    virtual void expand_unit_at(size_t pos, const schedule_chain& c);
+    
     virtual void append_unit(const schedule_unit *unit);
-
+    
     virtual const std::vector<const schedule_unit *>& get_units() const;
 
     protected:

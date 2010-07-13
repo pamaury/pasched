@@ -119,6 +119,17 @@ class schedule_dag
      */
     virtual chain_schedule_unit *fuse_units(const schedule_unit *a,
         const schedule_unit *b, bool simulate_if_approx = false);
+
+    /**
+     * Duplicate a subgraph of the DAG given by a set of nodes.
+     */
+    virtual schedule_dag *dup_subgraph(const std::set< const schedule_unit * >& units) const;
+
+    /**
+     * Collapse a given set of node into one node given as a parameter.
+     */
+    virtual void collapse_subgraph(const std::set< const schedule_unit * >& units,
+        const schedule_unit *new_unit);
 };
 
 /**

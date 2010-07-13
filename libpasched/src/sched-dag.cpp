@@ -348,6 +348,60 @@ chain_schedule_unit *schedule_dag::fuse_units(const schedule_unit *a,
     return c;
 }
 
+schedule_dag *schedule_dag::dup_subgraph(const std::set< const schedule_unit * >& sub) const
+{
+    /* Do it the dirty and inefficient way: duplicate this DAG and remove the useless stuff */
+    schedule_dag *cpy = dup();
+
+    for(size_t u = 0; u < get_units().size(); u++)
+        if(sub.find(get_units()[u]) == sub.end())
+            cpy->remove_unit(get_units()[u]);
+    return cpy;
+}
+
+
+void schedule_dag::collapse_subgraph(const std::set< const schedule_unit * >& sub,
+        const schedule_unit *new_unit)
+{
+    std::vector< schedule_dep > to_add;
+    std::vector< const schedule_unit * > to_remove;
+
+    for(size_t u = 0; u < get_units().size(); u++)
+    {
+        const schedule_unit *unit = get_units()[u];
+        /* ignore unit if it's not in the subgraph */
+        if(sub.find(unit) == sub.end())
+            continue;
+
+        for(size_t i = 0; i < get_preds(unit).size(); i++)
+        {
+            schedule_dep dep = get_preds(unit)[i];
+            /* dependency must come from outside of the subgraph */
+            if(sub.find(dep.to()) != sub.end())
+                continue;
+            dep.set_to(new_unit);
+            to_add.push_back(dep);
+        }
+        for(size_t i = 0; i < get_succs(unit).size(); i++)
+        {
+            schedule_dep dep = get_succs(unit)[i];
+            /* dependency must go outside of the subgraph */
+            if(sub.find(dep.to()) != sub.end())
+                continue;
+            dep.set_from(new_unit);
+            to_add.push_back(dep);
+        }
+    }
+
+    /* remove all units from the subgraph */
+    to_remove.insert(to_remove.begin(), sub.begin(), sub.end());
+    remove_units(to_remove);
+    /* add the new unit */
+    add_unit(new_unit);
+    /* add new dependencies */
+    add_dependencies(to_add);
+}
+
 /**
  * Generic Implementation
  */

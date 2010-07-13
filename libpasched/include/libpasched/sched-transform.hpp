@@ -97,8 +97,20 @@ class smart_fuse_two_units : public transformation
 
     virtual void transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const;
 
-    public:
+    protected:
     bool m_allow_non_optimal_irp_calculation;
+};
+
+/**
+ *
+ */
+class simplify_order_cuts : public transformation
+{
+    public:
+    simplify_order_cuts();
+    virtual ~simplify_order_cuts();
+
+    virtual void transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const;
 };
 
 }
