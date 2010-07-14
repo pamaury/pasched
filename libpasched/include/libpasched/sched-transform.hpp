@@ -292,6 +292,22 @@ class collapse_chains : public transformation
         transformation_status& status) const;
 };
 
+/**
+ *
+ */
+class split_merge_branch_units : public transformation
+{
+    public:
+    split_merge_branch_units();
+    virtual ~split_merge_branch_units();
+
+    virtual void transform(schedule_dag& d, const scheduler& s, schedule_chain& c,
+        transformation_status& status) const;
+
+    protected:
+    virtual void do_transform(schedule_dag& d, const scheduler& s, schedule_chain& c,
+        transformation_status& status, int level) const;
+};
 
 }
 

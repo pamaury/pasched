@@ -1051,5 +1051,107 @@ void collapse_chains::transform(schedule_dag& dag, const scheduler& s, schedule_
     debug() << "<--- collapse_chains::transform\n";
 }
 
+/**
+ * split_merge_branch_units
+ */
+split_merge_branch_units::split_merge_branch_units()
+{
 }
 
+split_merge_branch_units::~split_merge_branch_units()
+{
+}
+
+void split_merge_branch_units::transform(schedule_dag& dag, const scheduler& s, schedule_chain& c,
+    transformation_status& status) const
+{
+    do_transform(dag, s, c, status, 0);
+}
+
+void split_merge_branch_units::do_transform(schedule_dag& dag, const scheduler& s, schedule_chain& c,
+    transformation_status& status, int level) const
+{
+    if(level == 0)
+    {
+        debug() << "---> split_merge_branch_units::transform\n";
+        status.begin_transformation();
+    }
+
+    std::vector< const schedule_unit * > to_split;
+
+    for(size_t u = 0; u < dag.get_units().size(); u++)
+    {
+        const schedule_unit *unit = dag.get_units()[u];
+        std::set< const schedule_unit * > pr = dag.get_reachable(unit, schedule_dag::rf_follow_preds);
+        std::set< const schedule_unit * > sr = dag.get_reachable(unit, schedule_dag::rf_follow_succs);
+
+        if(pr.size() == 0 || sr.size() == 0)
+            continue;
+        if((sr.size() + pr.size() + 1) != dag.get_units().size())
+            continue;
+
+        std::set< const schedule_unit * >::iterator it = pr.begin();
+
+        for(; it != pr.end(); ++it)
+        {
+            for(size_t i = 0; i < dag.get_succs(*it).size(); i++)
+                if(sr.find(dag.get_succs(*it)[i].to()) != sr.end())
+                    goto Lskip;
+        }
+
+        it = sr.begin();
+        for(; it != sr.end(); ++it)
+        {
+            for(size_t i = 0; i < dag.get_preds(*it).size(); i++)
+                if(pr.find(dag.get_preds(*it)[i].from()) != pr.end())
+                    goto Lskip;
+        }
+
+        //std::cout << "found split node: " << dag.get_units()[u]->to_string() << "\n";
+        //std::cout << "pr: " << pr << "\n";
+        //std::cout << "sr: " << sr << "\n";
+
+        /* split here */
+        {
+            schedule_dag *cpy = dag.dup();
+
+            dag.remove_units(set_to_vector(sr));
+            cpy->remove_units(set_to_vector(pr));
+
+            if(level == 0)
+            {
+                status.set_modified_graph(true);
+                status.set_junction(true);
+                status.set_deadlock(false);
+            }
+
+            s.schedule(dag, c);
+            if(c.get_unit_at(c.get_unit_count() - 1) != unit)
+                throw std::runtime_error("split_merge_branch_units::do_transform detected a bad schedule");
+            c.remove_unit_at(c.get_unit_count() - 1);
+
+            s.schedule(*cpy, c);
+            delete cpy;
+        }
+
+        Lskip:
+        continue;
+    }
+
+    if(level == 0)
+    {
+        status.set_modified_graph(false);
+        status.set_junction(false);
+        status.set_deadlock(false);
+    }
+
+    s.schedule(dag, c);
+
+    if(level == 0)
+    {
+        status.end_transformation();
+        debug() << "<--- split_merge_branch_units::transform\n";
+    }
+}
+
+}

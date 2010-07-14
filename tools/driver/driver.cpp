@@ -691,6 +691,7 @@ int __main(int argc, char **argv)
     snd_stage_pipe.add_stage(new pasched::simplify_order_cuts);
     snd_stage_pipe.add_stage(new pasched::break_symmetrical_branch_merge);
     snd_stage_pipe.add_stage(new pasched::collapse_chains);
+    snd_stage_pipe.add_stage(new pasched::split_merge_branch_units);
 
     pasched::basic_list_scheduler sched;
     pasched::generic_schedule_chain chain;
