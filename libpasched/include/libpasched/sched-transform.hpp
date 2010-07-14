@@ -14,7 +14,15 @@ class transformation
     transformation();
     virtual ~transformation();
 
-    virtual void transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const = 0;
+    /**
+     * Perform a transform on the graph D given as input and then call
+     * the scheduler S on any number of graphs need to schedule D. The resulting
+     * schedule has to be *appended* to C.
+     *
+     * Return false if the transformation did not modify the graph and called the
+     * schedule with the graph passed in input, return true otherwise.
+     */
+    virtual bool transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const = 0;
 };
 
 class glued_transformation_scheduler : public scheduler
@@ -25,9 +33,12 @@ class glued_transformation_scheduler : public scheduler
 
     virtual void schedule(schedule_dag& d, schedule_chain& c) const;
 
+    virtual bool get_transform_status() const;
+
     protected:
     const transformation *m_transform;
     const scheduler *m_scheduler;
+    mutable bool m_tranform_res;
 };
 
 class packed_transformation : public transformation
@@ -36,7 +47,7 @@ class packed_transformation : public transformation
     packed_transformation(const transformation *first, const transformation *second);
     ~packed_transformation();
 
-    virtual void transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const;
+    virtual bool transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const;
 
     protected:
     const transformation *m_first;
@@ -51,7 +62,7 @@ class transformation_pipeline : public transformation
 
     virtual void add_stage(const transformation *transform);
 
-    virtual void transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const;
+    virtual bool transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const;
     
     protected:
     std::vector< const transformation * > m_pipeline;
@@ -69,7 +80,7 @@ class unique_reg_ids : public transformation
     unique_reg_ids();
     virtual ~unique_reg_ids();
 
-    virtual void transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const;
+    virtual bool transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const;
 };
 
 /**
@@ -83,7 +94,7 @@ class strip_useless_order_deps : public transformation
     strip_useless_order_deps();
     virtual ~strip_useless_order_deps();
 
-    virtual void transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const;
+    virtual bool transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const;
 };
 
 /**
@@ -95,7 +106,7 @@ class smart_fuse_two_units : public transformation
     smart_fuse_two_units(bool allow_non_optimal_irp_calculation);
     virtual ~smart_fuse_two_units();
 
-    virtual void transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const;
+    virtual bool transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const;
 
     protected:
     bool m_allow_non_optimal_irp_calculation;
@@ -117,7 +128,7 @@ class simplify_order_cuts : public transformation
     simplify_order_cuts();
     virtual ~simplify_order_cuts();
 
-    virtual void transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const;
+    virtual bool transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const;
 };
 
 /**
@@ -132,7 +143,7 @@ class split_def_use_dom_use_deps : public transformation
     split_def_use_dom_use_deps(bool generate_unique_reg_id = true);
     virtual ~split_def_use_dom_use_deps();
 
-    virtual void transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const;
+    virtual bool transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const;
 
     protected:
     bool m_generate_new_reg_ids;

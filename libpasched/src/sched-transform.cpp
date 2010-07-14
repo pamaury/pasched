@@ -25,7 +25,7 @@ transformation::~transformation()
  */
 
 glued_transformation_scheduler::glued_transformation_scheduler(const transformation *transform, const scheduler *sched)
-    :m_transform(transform), m_scheduler(sched)
+    :m_transform(transform), m_scheduler(sched), m_tranform_res(false)
 {
 }
 
@@ -35,7 +35,12 @@ glued_transformation_scheduler::~glued_transformation_scheduler()
 
 void glued_transformation_scheduler::schedule(schedule_dag& d, schedule_chain& c) const
 {
-    m_transform->transform(d, *m_scheduler, c);
+    m_tranform_res = m_transform->transform(d, *m_scheduler, c);
+}
+
+bool glued_transformation_scheduler::get_transform_status() const
+{
+    return m_tranform_res;
 }
 
 /**
@@ -50,10 +55,12 @@ packed_transformation::~packed_transformation()
 {
 }
 
-void packed_transformation::transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const
+bool packed_transformation::transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const
 {
     glued_transformation_scheduler internal_sched(m_second, &s);
-    m_first->transform(d, internal_sched, c);
+    bool res = m_first->transform(d, internal_sched, c);
+
+    return res || internal_sched.get_transform_status();
 }
 
 /**
@@ -79,14 +86,14 @@ void transformation_pipeline::add_stage(const transformation *transform)
         m_packers.push_back(new packed_transformation(m_pipeline[0], m_pipeline[1]));
 }
 
-void transformation_pipeline::transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const
+bool transformation_pipeline::transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const
 {
     if(m_pipeline.size() == 0)
         throw std::runtime_error("transformation_pipeline::transform called with empty pipeline");
     if(m_packers.size() > 0)
-        m_packers.back()->transform(d, s, c);
+        return m_packers.back()->transform(d, s, c);
     else
-        m_pipeline[0]->transform(d, s, c);
+        return m_pipeline[0]->transform(d, s, c);
 }
 
 /**
@@ -101,7 +108,7 @@ unique_reg_ids::~unique_reg_ids()
 {
 }
 
-void unique_reg_ids::transform(schedule_dag& dag, const scheduler& s, schedule_chain& c) const
+bool unique_reg_ids::transform(schedule_dag& dag, const scheduler& s, schedule_chain& c) const
 {
     std::vector< schedule_dep > to_remove;
     std::vector< schedule_dep > to_add;
@@ -131,6 +138,8 @@ void unique_reg_ids::transform(schedule_dag& dag, const scheduler& s, schedule_c
     dag.add_dependencies(to_add);
 
     s.schedule(dag, c);
+
+    return true;
 }
 
 /**
@@ -145,7 +154,7 @@ strip_useless_order_deps::~strip_useless_order_deps()
 {
 }
 
-void strip_useless_order_deps::transform(schedule_dag& dag, const scheduler& s, schedule_chain& c) const
+bool strip_useless_order_deps::transform(schedule_dag& dag, const scheduler& s, schedule_chain& c) const
 {
     /* Shortcuts */
     const std::vector< const schedule_unit * >& units = dag.get_units();
@@ -234,6 +243,8 @@ void strip_useless_order_deps::transform(schedule_dag& dag, const scheduler& s, 
         dag.remove_dependency(to_remove[i]);
 
     s.schedule(dag, c);
+
+    return to_remove.size() > 0;
 }
 
 /**
@@ -249,7 +260,7 @@ smart_fuse_two_units::~smart_fuse_two_units()
 {
 }
 
-void smart_fuse_two_units::transform(schedule_dag& dag, const scheduler& s, schedule_chain& c) const
+bool smart_fuse_two_units::transform(schedule_dag& dag, const scheduler& s, schedule_chain& c) const
 {
     /* Do two passes: first don't allow approx and then do so */
     bool allow_approx = false;
@@ -342,6 +353,8 @@ void smart_fuse_two_units::transform(schedule_dag& dag, const scheduler& s, sche
             c.insert_unit_at(j + k, fused[i]->get_chain()[k]);
         delete fused[i];
     }
+
+    return fused.size() > 0;
 }
 
 /**
@@ -356,7 +369,7 @@ simplify_order_cuts::~simplify_order_cuts()
 {
 }
 
-void simplify_order_cuts::transform(schedule_dag& dag, const scheduler& s, schedule_chain& c) const
+bool simplify_order_cuts::transform(schedule_dag& dag, const scheduler& s, schedule_chain& c) const
 {
     for(size_t u = 0; u < dag.get_units().size(); u++)
     {
@@ -384,11 +397,12 @@ void simplify_order_cuts::transform(schedule_dag& dag, const scheduler& s, sched
         /* and then bottom */
         transform(dag, s, c);
 
-        return;
+        return true;
     }
 
     /* otherwise, schedule the whole graph */
     s.schedule(dag, c);
+    return false;
 }
 
 /**
@@ -403,8 +417,9 @@ split_def_use_dom_use_deps::~split_def_use_dom_use_deps()
 {
 }
 
-void split_def_use_dom_use_deps::transform(schedule_dag& dag, const scheduler& s, schedule_chain& c) const
+bool split_def_use_dom_use_deps::transform(schedule_dag& dag, const scheduler& s, schedule_chain& c) const
 {
+    bool graph_changed = false;
     /* Shortcuts */
     const std::vector< const schedule_unit * >& units = dag.get_units();
     size_t n = units.size();
@@ -549,10 +564,13 @@ void split_def_use_dom_use_deps::transform(schedule_dag& dag, const scheduler& s
         break;
 
         Lgraph_changed:
+        graph_changed = true;
         continue;
     }
 
     s.schedule(dag, c);
+
+    return graph_changed;
 }
 
 }

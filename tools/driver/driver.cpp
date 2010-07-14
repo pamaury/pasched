@@ -105,7 +105,7 @@ class dag_accumulator : public pasched::transformation
     dag_accumulator() {}
     virtual ~dag_accumulator() {}
 
-    virtual void transform(pasched::schedule_dag& dag, const pasched::scheduler& s, pasched::schedule_chain& c) const
+    virtual bool transform(pasched::schedule_dag& dag, const pasched::scheduler& s, pasched::schedule_chain& c) const
     {
         pasched::schedule_dag *d = dag.deep_dup();
         /* accumulate */
@@ -114,6 +114,8 @@ class dag_accumulator : public pasched::transformation
         delete d;
         /* forward */
         s.schedule(dag, c);
+
+        return false;
     }
 
     pasched::schedule_dag& get_dag() { return m_dag; }
