@@ -8,6 +8,63 @@
 namespace PAMAURY_SCHEDULER_NS
 {
 
+class transformation_status
+{
+    public:
+    transformation_status();
+    virtual ~transformation_status();
+
+    /** Called at the beginning of a transformation */
+    virtual void begin_transformation() = 0;
+    /** Called at the end, when everything is schedule and reassembled */
+    virtual void end_transformation() = 0;
+
+    /** did the transformation modified the input graph ? */
+    virtual void set_modified_graph(bool m) = 0;
+    virtual bool has_modified_graph() const = 0;
+
+    /** did/will the transformation was/be a deadlock and won't/didn't call the
+     * scheduler at all ? */
+    virtual void set_deadlock(bool d) = 0;
+    virtual bool is_deadlock() const = 0;
+
+    /** did/will the transformation was/be a junction and will/did call the
+     * scheduler several times ? */
+    virtual void set_junction(bool j) = 0;
+    virtual bool is_junction() const = 0;
+};
+
+class basic_status : public transformation_status
+{
+    public:
+    basic_status();
+    virtual ~basic_status();
+
+    virtual void begin_transformation();
+    virtual void end_transformation();
+
+    /** did the transformation modified the input graph ? */
+    virtual void set_modified_graph(bool m);
+    virtual bool has_modified_graph() const;
+
+    /** did/will the transformation was/be a deadlock and won't/didn't call the
+     * scheduler at all ? */
+    virtual void set_deadlock(bool d);
+    virtual bool is_deadlock() const;
+
+    /** did/will the transformation was/be a junction and will/did call the
+     * scheduler several times ? */
+    virtual void set_junction(bool j);
+    virtual bool is_junction() const;
+
+    protected:
+    /** Set to true if the transform acted as a pass-thru.
+     * This field must be set before the first call to the scheduler */
+    bool m_mod;
+    bool m_deadlock;
+    bool m_junction;
+};
+
 class transformation
 {
     public:
@@ -18,27 +75,46 @@ class transformation
      * Perform a transform on the graph D given as input and then call
      * the scheduler S on any number of graphs need to schedule D. The resulting
      * schedule has to be *appended* to C.
-     *
-     * Return false if the transformation did not modify the graph and called the
-     * schedule with the graph passed in input, return true otherwise.
      */
-    virtual bool transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const = 0;
+    virtual void transform(schedule_dag& d, const scheduler& s, schedule_chain& c,
+        transformation_status& status) const = 0;
 };
 
 class glued_transformation_scheduler : public scheduler
 {
     public:
-    glued_transformation_scheduler(const transformation *tranform, const scheduler *sched);
+    glued_transformation_scheduler(const transformation *tranform, const scheduler *sched,
+        transformation_status& status);
     virtual ~glued_transformation_scheduler();
 
     virtual void schedule(schedule_dag& d, schedule_chain& c) const;
-
-    virtual bool get_transform_status() const;
 
     protected:
     const transformation *m_transform;
     const scheduler *m_scheduler;
     mutable bool m_tranform_res;
+    transformation_status& m_status;
+};
+
+class packed_status : public transformation_status
+{
+    public:
+    packed_status(transformation_status& status);
+    virtual ~packed_status();
+
+    virtual void begin_transformation();
+    virtual void end_transformation();
+
+    virtual void set_modified_graph(bool m);
+    virtual bool has_modified_graph() const;
+    virtual void set_deadlock(bool d);
+    virtual bool is_deadlock() const;
+    virtual void set_junction(bool j);
+    virtual bool is_junction() const;
+
+    protected:
+    int m_level;
+    transformation_status& m_status;
 };
 
 class packed_transformation : public transformation
@@ -47,7 +123,8 @@ class packed_transformation : public transformation
     packed_transformation(const transformation *first, const transformation *second);
     ~packed_transformation();
 
-    virtual bool transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const;
+    virtual void transform(schedule_dag& d, const scheduler& s, schedule_chain& c,
+        transformation_status& status) const;
 
     protected:
     const transformation *m_first;
@@ -62,11 +139,25 @@ class transformation_pipeline : public transformation
 
     virtual void add_stage(const transformation *transform);
 
-    virtual bool transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const;
+    virtual void transform(schedule_dag& d, const scheduler& s, schedule_chain& c,
+        transformation_status& status) const;
     
     protected:
     std::vector< const transformation * > m_pipeline;
     std::vector< packed_transformation * > m_packers;
+};
+
+class transformation_loop : public transformation
+{
+    public:
+    transformation_loop(const transformation *x);
+    ~transformation_loop();
+
+    virtual void transform(schedule_dag& d, const scheduler& s, schedule_chain& c,
+        transformation_status& status) const;
+    
+    protected:
+    const transformation *m_transform;
 };
 
 /**
@@ -80,7 +171,8 @@ class unique_reg_ids : public transformation
     unique_reg_ids();
     virtual ~unique_reg_ids();
 
-    virtual bool transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const;
+    virtual void transform(schedule_dag& d, const scheduler& s, schedule_chain& c,
+        transformation_status& status) const;
 };
 
 /**
@@ -94,7 +186,8 @@ class strip_useless_order_deps : public transformation
     strip_useless_order_deps();
     virtual ~strip_useless_order_deps();
 
-    virtual bool transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const;
+    virtual void transform(schedule_dag& d, const scheduler& s, schedule_chain& c,
+        transformation_status& status) const;
 };
 
 /**
@@ -106,7 +199,8 @@ class smart_fuse_two_units : public transformation
     smart_fuse_two_units(bool allow_non_optimal_irp_calculation);
     virtual ~smart_fuse_two_units();
 
-    virtual bool transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const;
+    virtual void transform(schedule_dag& d, const scheduler& s, schedule_chain& c,
+        transformation_status& status) const;
 
     protected:
     bool m_allow_non_optimal_irp_calculation;
@@ -128,7 +222,12 @@ class simplify_order_cuts : public transformation
     simplify_order_cuts();
     virtual ~simplify_order_cuts();
 
-    virtual bool transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const;
+    virtual void transform(schedule_dag& d, const scheduler& s, schedule_chain& c,
+        transformation_status& status) const;
+
+    protected:
+    void do_transform(schedule_dag& d, const scheduler& s, schedule_chain& c,
+        transformation_status& status, int level) const;
 };
 
 /**
@@ -143,7 +242,8 @@ class split_def_use_dom_use_deps : public transformation
     split_def_use_dom_use_deps(bool generate_unique_reg_id = true);
     virtual ~split_def_use_dom_use_deps();
 
-    virtual bool transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const;
+    virtual void transform(schedule_dag& d, const scheduler& s, schedule_chain& c,
+        transformation_status& status) const;
 
     protected:
     bool m_generate_new_reg_ids;

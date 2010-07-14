@@ -105,8 +105,14 @@ class dag_accumulator : public pasched::transformation
     dag_accumulator() {}
     virtual ~dag_accumulator() {}
 
-    virtual bool transform(pasched::schedule_dag& dag, const pasched::scheduler& s, pasched::schedule_chain& c) const
+    virtual void transform(pasched::schedule_dag& dag, const pasched::scheduler& s, pasched::schedule_chain& c,
+        pasched::transformation_status& status) const
     {
+        status.begin_transformation();
+        status.set_modified_graph(false);
+        status.set_junction(false);
+        status.set_deadlock(false);
+        
         pasched::schedule_dag *d = dag.deep_dup();
         /* accumulate */
         m_dag.add_units(d->get_units());
@@ -115,7 +121,7 @@ class dag_accumulator : public pasched::transformation
         /* forward */
         s.schedule(dag, c);
 
-        return false;
+        status.end_transformation();
     }
 
     pasched::schedule_dag& get_dag() { return m_dag; }
@@ -693,7 +699,11 @@ int __main(int argc, char **argv)
     /* run pipeline with stupid scheduler */
     pasched::basic_list_scheduler sched;
     pasched::generic_schedule_chain chain;
-    pipeline.transform(dag, sched, chain);
+    pasched::basic_status status;
+    pipeline.transform(dag, sched, chain, status);
+
+    std::cout << "Status: Mod=" << status.has_modified_graph() << " Junction=" << status.is_junction()
+            << " Deadlock=" << status.is_deadlock() << "\n";
     
     formats[to].write(accumulator.get_dag(), argv[4]);
     

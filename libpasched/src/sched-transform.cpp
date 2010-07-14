@@ -10,7 +10,72 @@ namespace PAMAURY_SCHEDULER_NS
 {
 
 /**
- * schedule_dag_tranformation
+ * transformation_status
+ */
+transformation_status::transformation_status()
+{
+}
+
+transformation_status::~transformation_status()
+{
+}
+
+/**
+ * basic_status
+ */
+basic_status::basic_status()
+{
+}
+
+basic_status::~basic_status()
+{
+}
+
+void basic_status::begin_transformation()
+{
+    m_mod = m_junction = m_deadlock = false;
+}
+
+void basic_status::end_transformation()
+{
+}
+
+void basic_status::set_modified_graph(bool m)
+{
+    m_mod = m;
+}
+
+bool basic_status::has_modified_graph() const
+{
+    return m_mod;
+}
+
+void basic_status::set_deadlock(bool d)
+{
+    if(d)
+        set_junction(false);
+    m_deadlock = d;
+}
+
+bool basic_status::is_deadlock() const
+{
+    return m_deadlock;
+}
+
+void basic_status::set_junction(bool j)
+{
+    if(j)
+        set_deadlock(false);
+    m_junction = j;
+}
+
+bool basic_status::is_junction() const
+{
+    return m_junction;
+}
+
+/**
+ * transformation
  */
 transformation::transformation()
 {
@@ -24,8 +89,9 @@ transformation::~transformation()
  * glued_transformation_scheduler
  */
 
-glued_transformation_scheduler::glued_transformation_scheduler(const transformation *transform, const scheduler *sched)
-    :m_transform(transform), m_scheduler(sched), m_tranform_res(false)
+glued_transformation_scheduler::glued_transformation_scheduler(const transformation *transform, const scheduler *sched,
+    transformation_status& status)
+    :m_transform(transform), m_scheduler(sched), m_status(status)
 {
 }
 
@@ -35,12 +101,67 @@ glued_transformation_scheduler::~glued_transformation_scheduler()
 
 void glued_transformation_scheduler::schedule(schedule_dag& d, schedule_chain& c) const
 {
-    m_tranform_res = m_transform->transform(d, *m_scheduler, c);
+     m_transform->transform(d, *m_scheduler, c, m_status);
 }
 
-bool glued_transformation_scheduler::get_transform_status() const
+/**
+ * packed_status
+ */
+packed_status::packed_status(transformation_status& status)
+    :m_level(0), m_status(status)
 {
-    return m_tranform_res;
+}
+
+packed_status::~packed_status()
+{
+    if(m_level != 0)
+        throw std::runtime_error("packed_status::~packed_status detected an invalid stacking level");
+}
+
+void packed_status::begin_transformation()
+{
+    if(m_level == 0)
+        m_status.begin_transformation();
+    m_level++;
+}
+
+void packed_status::end_transformation()
+{
+    m_level--;
+    if(m_level == 0)
+        m_status.end_transformation();
+}
+
+void packed_status::set_modified_graph(bool m)
+{
+    if(m)
+        m_status.set_modified_graph(true);
+}
+
+bool packed_status::has_modified_graph() const
+{
+    return m_status.has_modified_graph();
+}
+
+void packed_status::set_deadlock(bool d)
+{
+    /* don't keep track of deadlock */
+}
+
+bool packed_status::is_deadlock() const
+{
+    return false;
+}
+
+void packed_status::set_junction(bool j)
+{
+    if(j)
+        m_status.set_junction(true);
+}
+
+bool packed_status::is_junction() const
+{
+    return m_status.is_junction();
 }
 
 /**
@@ -55,12 +176,12 @@ packed_transformation::~packed_transformation()
 {
 }
 
-bool packed_transformation::transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const
+void packed_transformation::transform(schedule_dag& d, const scheduler& s, schedule_chain& c,
+    transformation_status& status) const
 {
-    glued_transformation_scheduler internal_sched(m_second, &s);
-    bool res = m_first->transform(d, internal_sched, c);
-
-    return res || internal_sched.get_transform_status();
+    packed_status ps(status);
+    glued_transformation_scheduler internal_sched(m_second, &s, ps);
+    m_first->transform(d, internal_sched, c, ps);
 }
 
 /**
@@ -86,14 +207,33 @@ void transformation_pipeline::add_stage(const transformation *transform)
         m_packers.push_back(new packed_transformation(m_pipeline[0], m_pipeline[1]));
 }
 
-bool transformation_pipeline::transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const
+void transformation_pipeline::transform(schedule_dag& d, const scheduler& s, schedule_chain& c,
+    transformation_status& status) const
 {
     if(m_pipeline.size() == 0)
         throw std::runtime_error("transformation_pipeline::transform called with empty pipeline");
     if(m_packers.size() > 0)
-        return m_packers.back()->transform(d, s, c);
+        return m_packers.back()->transform(d, s, c, status);
     else
-        return m_pipeline[0]->transform(d, s, c);
+        return m_pipeline[0]->transform(d, s, c, status);
+}
+
+/**
+ * transformation_loop
+ */
+transformation_loop::transformation_loop(const transformation *x)
+    :m_transform(x)
+{
+}
+
+transformation_loop::~transformation_loop()
+{
+}
+
+void transformation_loop::transform(schedule_dag& d, const scheduler& s, schedule_chain& c,
+    transformation_status& status) const
+{
+    
 }
 
 /**
@@ -108,10 +248,13 @@ unique_reg_ids::~unique_reg_ids()
 {
 }
 
-bool unique_reg_ids::transform(schedule_dag& dag, const scheduler& s, schedule_chain& c) const
+void unique_reg_ids::transform(schedule_dag& dag, const scheduler& s, schedule_chain& c,
+    transformation_status& status) const
 {
     std::vector< schedule_dep > to_remove;
     std::vector< schedule_dep > to_add;
+
+    status.begin_transformation();
     
     for(size_t u = 0; u < dag.get_units().size(); u++)
     {
@@ -137,9 +280,13 @@ bool unique_reg_ids::transform(schedule_dag& dag, const scheduler& s, schedule_c
     dag.remove_dependencies(to_remove);
     dag.add_dependencies(to_add);
 
+    status.set_modified_graph(true);
+    status.set_deadlock(false);
+    status.set_junction(false);
+
     s.schedule(dag, c);
 
-    return true;
+    status.end_transformation();
 }
 
 /**
@@ -154,7 +301,8 @@ strip_useless_order_deps::~strip_useless_order_deps()
 {
 }
 
-bool strip_useless_order_deps::transform(schedule_dag& dag, const scheduler& s, schedule_chain& c) const
+void strip_useless_order_deps::transform(schedule_dag& dag, const scheduler& s, schedule_chain& c,
+    transformation_status& status) const
 {
     /* Shortcuts */
     const std::vector< const schedule_unit * >& units = dag.get_units();
@@ -164,6 +312,8 @@ bool strip_useless_order_deps::transform(schedule_dag& dag, const scheduler& s, 
     /* path[u][v] is true if there is a path from u to v */
     std::vector< std::vector< bool > > path;
     std::vector< schedule_dep > to_remove;
+
+    status.begin_transformation();
 
     /* As a first step, remove duplicate order, that is when
      * there are several order deps between same pair of units */
@@ -242,9 +392,13 @@ bool strip_useless_order_deps::transform(schedule_dag& dag, const scheduler& s, 
     for(size_t i = 0; i < to_remove.size(); i++)
         dag.remove_dependency(to_remove[i]);
 
+    status.set_modified_graph(to_remove.size() > 0);
+    status.set_deadlock(false);
+    status.set_junction(false);
+
     s.schedule(dag, c);
 
-    return to_remove.size() > 0;
+    status.end_transformation();
 }
 
 /**
@@ -260,11 +414,14 @@ smart_fuse_two_units::~smart_fuse_two_units()
 {
 }
 
-bool smart_fuse_two_units::transform(schedule_dag& dag, const scheduler& s, schedule_chain& c) const
+void smart_fuse_two_units::transform(schedule_dag& dag, const scheduler& s, schedule_chain& c,
+    transformation_status& status) const
 {
     /* Do two passes: first don't allow approx and then do so */
     bool allow_approx = false;
     std::vector< chain_schedule_unit * > fused;
+
+    status.begin_transformation();
     
     while(true)
     {        
@@ -331,6 +488,10 @@ bool smart_fuse_two_units::transform(schedule_dag& dag, const scheduler& s, sche
         continue;
     }
 
+    status.set_modified_graph(fused.size() > 0);
+    status.set_deadlock(false);
+    status.set_junction(false);
+
     /* schedule DAG */
     s.schedule(dag, c);
 
@@ -354,7 +515,7 @@ bool smart_fuse_two_units::transform(schedule_dag& dag, const scheduler& s, sche
         delete fused[i];
     }
 
-    return fused.size() > 0;
+    status.end_transformation();
 }
 
 /**
@@ -369,8 +530,18 @@ simplify_order_cuts::~simplify_order_cuts()
 {
 }
 
-bool simplify_order_cuts::transform(schedule_dag& dag, const scheduler& s, schedule_chain& c) const
+void simplify_order_cuts::transform(schedule_dag& dag, const scheduler& s, schedule_chain& c,
+    transformation_status& status) const
 {
+    do_transform(dag, s, c, status, 0);
+}
+
+void simplify_order_cuts::do_transform(schedule_dag& dag, const scheduler& s, schedule_chain& c,
+    transformation_status& status, int level) const
+{
+    if(level == 0)
+        status.begin_transformation();
+    
     for(size_t u = 0; u < dag.get_units().size(); u++)
     {
         /* pick the first unit */
@@ -392,17 +563,31 @@ bool simplify_order_cuts::transform(schedule_dag& dag, const scheduler& s, sched
         schedule_dag *top = dag.dup_subgraph(reach);
         dag.remove_units(set_to_vector(reach));
 
+        if(level == 0)
+        {
+            status.set_modified_graph(true);
+            status.set_junction(true); /* don't set deadlock then ! */
+        }
         /* recursively transform top */
-        transform(*top, s, c);
+        do_transform(*top, s, c, status, level + 1);
         /* and then bottom */
-        transform(dag, s, c);
+        do_transform(dag, s, c, status, level + 1);
 
-        return true;
+        status.end_transformation();
+        return;
     }
 
+    if(level == 0)
+    {
+        status.set_modified_graph(false);
+        status.set_deadlock(false);
+        status.set_junction(false);
+    }
     /* otherwise, schedule the whole graph */
     s.schedule(dag, c);
-    return false;
+
+    if(level == 0)
+        status.end_transformation();
 }
 
 /**
@@ -417,7 +602,8 @@ split_def_use_dom_use_deps::~split_def_use_dom_use_deps()
 {
 }
 
-bool split_def_use_dom_use_deps::transform(schedule_dag& dag, const scheduler& s, schedule_chain& c) const
+void split_def_use_dom_use_deps::transform(schedule_dag& dag, const scheduler& s, schedule_chain& c,
+    transformation_status& status) const
 {
     bool graph_changed = false;
     /* Shortcuts */
@@ -427,6 +613,8 @@ bool split_def_use_dom_use_deps::transform(schedule_dag& dag, const scheduler& s
     std::map< const schedule_unit *, size_t > name_map;
     /* path[u][v] is true if there is a path from u to v */
     std::vector< std::vector< bool > > path;
+
+    status.begin_transformation();
 
     /* First compute path map, it will not changed during the algorithm
      * even though some edges are changed */
@@ -568,9 +756,13 @@ bool split_def_use_dom_use_deps::transform(schedule_dag& dag, const scheduler& s
         continue;
     }
 
+    status.set_modified_graph(graph_changed);
+    status.set_deadlock(false);
+    status.set_junction(false);
+
     s.schedule(dag, c);
 
-    return graph_changed;
+    status.end_transformation();
 }
 
 }
