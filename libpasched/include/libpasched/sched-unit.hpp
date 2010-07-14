@@ -50,11 +50,15 @@ class schedule_dep
                 m_reg == d.m_reg;
     }
 
+    static reg_t generate_unique_reg_id();
+
     private:
     const schedule_unit *m_from;
     const schedule_unit *m_to;
     dep_kind m_kind;
     reg_t m_reg; // the register for dependencies, 0 otherwise (memory, artificial, ...)
+
+    static reg_t g_unique_reg_id;
 };
 
 class schedule_unit

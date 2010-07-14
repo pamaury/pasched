@@ -5,6 +5,17 @@ namespace PAMAURY_SCHEDULER_NS
 {
 
 /**
+ * schedule_dep
+ */
+
+schedule_dep::reg_t schedule_dep::generate_unique_reg_id()
+{
+    return g_unique_reg_id++;
+}
+
+schedule_dep::reg_t schedule_dep::g_unique_reg_id = 1;
+
+/**
  * schedule_unit
  */
 

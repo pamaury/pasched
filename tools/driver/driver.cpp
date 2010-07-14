@@ -205,142 +205,9 @@ void split_merge_branch_units_conservative(pasched::schedule_dag& dag)
  * from, say, U(1), then we can cut all (U,U(i)) dep for i>=1
  * and add (U(1),U(i)) instead
  */
-void split_def_use_dom_use_deps(pasched::schedule_dag& dag)
+const pasched::transformation *split_def_use_dom_use_deps()
 {
-    /* First compute path map, it will not changed during the algorithm
-     * even though some edges are changed */
-     
-    /* Shortcuts */
-    const sched_unit_vec_t& units = dag.get_units();
-    size_t n = units.size();
-    /* Map a unit pointer to a number */
-    std::map< sched_unit_ptr_t, size_t > name_map;
-    /* path[u][v] is true if there is a path from u to v */
-    std::vector< std::vector< bool > > path;
-
-    path.resize(n);
-    for(size_t u = 0; u < n; u++)
-    {
-        name_map[units[u]] = u;
-        path[u].resize(n);
-    }
-
-    /* Fill path */
-    for(size_t u = 0; u < n; u++)
-    {
-        sched_unit_set_t reach = dag.get_reachable(units[u],
-            sched_dag_t::rf_follow_succs | sched_dag_t::rf_include_unit);
-        sched_unit_set_t::iterator it = reach.begin();
-        for(; it != reach.end(); ++it)
-            path[u][name_map[*it]] = true;
-        /*
-        std::cout << "Reachable from " << units[u]->to_string() << "\n";
-        std::cout << "  " << reach << "\n";
-        */
-    }
-    
-    /* Each iteration might modify the graph */
-    while(true)
-    {
-        /* For each unit U */
-        for(size_t u = 0; u < dag.get_units().size(); u++)
-        {
-            sched_unit_ptr_t unit = dag.get_units()[u];
-            const sched_dep_vec_t& succs = dag.get_succs(unit);
-            /* Skip useless units for speed reason */
-            if(succs.size() <= 1)
-                continue;
-            /* Compute the set of registers on successors dep */
-            std::map< unsigned, sched_dep_vec_t > reg_succs;
-
-            for(size_t i = 0; i < succs.size(); i++)
-                if(succs[i].kind() == sched_dep_t::data_dep)
-                    reg_succs[succs[i].reg()].push_back(succs[i]);
-
-            if(0)
-            {
-                std::cout << "Unit: " << unit->to_string() << "\n";
-                std::map< unsigned, sched_dep_vec_t >::iterator reg_succs_it = reg_succs.begin();
-                for(; reg_succs_it != reg_succs.end(); ++reg_succs_it)
-                {
-                    std::cout << "  Register " << reg_succs_it->first << "\n";
-                    for(size_t i = 0; i < reg_succs_it->second.size(); i++)
-                        std::cout << "    To " << reg_succs_it->second[i].to()->to_string() << "\n";
-                }
-            }
-            
-            /* Try each register R */
-            std::map< unsigned, sched_dep_vec_t >::iterator reg_succs_it = reg_succs.begin();
-            for(; reg_succs_it != reg_succs.end(); ++reg_succs_it)
-            {
-                sched_dep_vec_t reg_use = reg_succs_it->second;
-
-                /* See of one successor S of U dominate all use
-                 * NOTE: S can be any successor of U
-                 * NOTE: there can be several dominators, we list tham all */
-                sched_unit_vec_t dominators;
-                
-                for(size_t dom_idx = 0; dom_idx < succs.size(); dom_idx++)
-                {
-                    for(size_t i = 0; i < reg_use.size(); i++)
-                        if(!path[name_map[succs[dom_idx].to()]][name_map[reg_use[i].to()]])
-                            goto Lskip;
-                    dominators.push_back(succs[dom_idx].to());
-                    Lskip:
-                    continue;
-                }
-                
-                for(size_t dom_idx = 0; dom_idx < dominators.size(); dom_idx++)
-                {
-                    /* There is dominator D */
-                    sched_unit_ptr_t dom = dominators[dom_idx];
-
-                    bool dominator_is_in_reg_use = false;
-                    bool non_dominator_is_in_reg_use = false;
-                    for(size_t i = 0; i < reg_use.size(); i++)
-                        if(dom == reg_use[i].to())
-                            dominator_is_in_reg_use = true;
-                        else
-                            non_dominator_is_in_reg_use = true;
-                    /* There must a node in reg use which is not the dominator */
-                    if(!non_dominator_is_in_reg_use)
-                        continue; /* next dominator */
-
-                    /*
-                    std::cout << "Dominator: " << dom->to_string() << "\n";
-                    for(size_t i = 0; i < reg_use.size(); i++)
-                        std::cout << "  -> " << reg_use[i].to()->to_string() << "\n";
-                    */ 
-
-                    /* For each dependency (U,V) on register R, remove (U,V) */
-                    dag.remove_dependencies(reg_use);
-                    /* For each old dependency (U,V) on register R, add (D,V)
-                     * NOTE: beware if the dominator is one of the considered child !
-                     *       Otherwise, we'll create a self-loop */
-                    for(size_t i = 0; i < reg_use.size(); i++)
-                        if(dom != reg_use[i].to())
-                            reg_use[i].set_from(dom);
-
-                    /* Add (U,D) on R
-                     * Except if dominator_is_in_reg_use because the previous
-                     * didn't modify the link so the (U,D) edge is already in the list */
-                    if(!dominator_is_in_reg_use)
-                        reg_use.push_back(sched_dep_t(unit, dom,
-                            sched_dep_t::data_dep, reg_succs_it->first));
-
-                    dag.add_dependencies(reg_use);
-                    
-                    goto Lgraph_changed;
-                }
-            }
-        }
-
-        /* Graph did not change */
-        break;
-
-        Lgraph_changed:
-        continue;
-    }
+    return new pasched::split_def_use_dom_use_deps;
 }
 
 /**
@@ -708,7 +575,7 @@ pass_t passes[] =
     {"strip-useless-order-deps", "Strip order dependencies already enforced by order depedencies", &strip_useless_order_deps},
     {"simplify-order-cuts", "Simplify the graph by finding one way cuts made of order dependencies", &simplify_order_cuts},
     //{"mris-ilp-schedule", "Schedule it with the MRIS ILP scheduler", &mris_ilp_schedule},
-    //{"split-def-use-dom-use-deps", "Split edges from a def to a use which dominates all other uses", &split_def_use_dom_use_deps},
+    {"split-def-use-dom-use-deps", "Split edges from a def to a use which dominates all other uses", &split_def_use_dom_use_deps},
     //{"strip-redundant-data-deps", "", &strip_redundant_data_deps},
     {"smart-fuse-two-units-conservative", "", &smart_fuse_two_units_conservative},
     {"smart-fuse-two-units-aggressive", "", &smart_fuse_two_units_aggressive},

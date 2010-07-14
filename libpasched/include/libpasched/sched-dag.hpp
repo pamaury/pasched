@@ -56,6 +56,10 @@ class schedule_dag
     virtual void add_units(const std::vector< const schedule_unit * >& units);
     virtual void remove_units(const std::vector< const schedule_unit * >& units);
 
+    /** Create a new register ID which is guaranted to be different from
+     * all others in the graph */
+    virtual schedule_dep::reg_t generate_unique_reg_id() const;
+
     /** Helper functions for graph exploration */
     enum
     {

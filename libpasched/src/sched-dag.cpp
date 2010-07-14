@@ -427,6 +427,11 @@ void schedule_dag::collapse_subgraph(const std::set< const schedule_unit * >& su
     add_dependencies(to_add);
 }
 
+schedule_dep::reg_t schedule_dag::generate_unique_reg_id() const
+{
+    return schedule_dep::generate_unique_reg_id();
+}
+
 /**
  * Generic Implementation
  */

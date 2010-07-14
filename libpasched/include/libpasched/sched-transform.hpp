@@ -120,6 +120,24 @@ class simplify_order_cuts : public transformation
     virtual void transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const;
 };
 
+/**
+ * If there is a node U such that all children for the same dependency
+ * are U(1) ... U(k) satisfy the property that all U(i) are reachable
+ * from, say, U(1), then we can cut all (U,U(i)) dep for i>=1
+ * and add (U(1),U(i)) instead
+ */
+class split_def_use_dom_use_deps : public transformation
+{
+    public:
+    split_def_use_dom_use_deps(bool generate_unique_reg_id = true);
+    virtual ~split_def_use_dom_use_deps();
+
+    virtual void transform(schedule_dag& d, const scheduler& s, schedule_chain& c) const;
+
+    protected:
+    bool m_generate_new_reg_ids;
+};
+
 }
 
 #endif /* __PAMAURY_SCHED_XFORM_HPP__ */

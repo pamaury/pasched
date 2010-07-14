@@ -4,6 +4,7 @@
 #include <stdexcept>
 #include <cassert>
 #include <algorithm>
+#include <iostream>
 
 namespace PAMAURY_SCHEDULER_NS
 {
@@ -104,22 +105,24 @@ void unique_reg_ids::transform(schedule_dag& dag, const scheduler& s, schedule_c
 {
     std::vector< schedule_dep > to_remove;
     std::vector< schedule_dep > to_add;
-    unsigned reg_idx = 1;
     
     for(size_t u = 0; u < dag.get_units().size(); u++)
     {
         const schedule_unit *unit = dag.get_units()[u];
-        std::map< unsigned, unsigned > reg_map;
+        std::map< schedule_dep::reg_t, schedule_dep::reg_t > reg_map;
         
         for(size_t i = 0; i < dag.get_succs(unit).size(); i++)
         {
             schedule_dep dep = dag.get_succs(unit)[i];
             to_remove.push_back(dep);
 
-            if(reg_map.find(dep.reg()) == reg_map.end())
-                reg_map[dep.reg()] = reg_idx++;
+            if(dep.kind() == schedule_dep::data_dep)
+            {
+                if(reg_map.find(dep.reg()) == reg_map.end())
+                    reg_map[dep.reg()] = dag.generate_unique_reg_id();
             
-            dep.set_reg(reg_map[dep.reg()]);
+                dep.set_reg(reg_map[dep.reg()]);
+            }
             to_add.push_back(dep);
         }
     }
@@ -385,6 +388,170 @@ void simplify_order_cuts::transform(schedule_dag& dag, const scheduler& s, sched
     }
 
     /* otherwise, schedule the whole graph */
+    s.schedule(dag, c);
+}
+
+/**
+ * split_def_use_dom_use_deps
+ */
+split_def_use_dom_use_deps::split_def_use_dom_use_deps(bool generate_new_reg_ids)
+    :m_generate_new_reg_ids(generate_new_reg_ids)
+{
+}
+
+split_def_use_dom_use_deps::~split_def_use_dom_use_deps()
+{
+}
+
+void split_def_use_dom_use_deps::transform(schedule_dag& dag, const scheduler& s, schedule_chain& c) const
+{
+    /* Shortcuts */
+    const std::vector< const schedule_unit * >& units = dag.get_units();
+    size_t n = units.size();
+    /* Map a unit pointer to a number */
+    std::map< const schedule_unit *, size_t > name_map;
+    /* path[u][v] is true if there is a path from u to v */
+    std::vector< std::vector< bool > > path;
+
+    /* First compute path map, it will not changed during the algorithm
+     * even though some edges are changed */
+    path.resize(n);
+    for(size_t u = 0; u < n; u++)
+    {
+        name_map[units[u]] = u;
+        path[u].resize(n);
+    }
+
+    /* Fill path */
+    for(size_t u = 0; u < n; u++)
+    {
+        std::set< const schedule_unit * > reach = dag.get_reachable(units[u],
+            schedule_dag::rf_follow_succs | schedule_dag::rf_include_unit);
+        std::set< const schedule_unit * >::iterator it = reach.begin();
+        for(; it != reach.end(); ++it)
+            path[u][name_map[*it]] = true;
+        /*
+        std::cout << "Reachable from " << units[u]->to_string() << "\n";
+        std::cout << "  " << reach << "\n";
+        */
+    }
+    
+    /* Each iteration might modify the graph */
+    while(true)
+    {
+        /* For each unit U */
+        for(size_t u = 0; u < dag.get_units().size(); u++)
+        {
+            const schedule_unit *unit = dag.get_units()[u];
+            const std::vector< schedule_dep >& succs = dag.get_succs(unit);
+            /* Skip useless units for speed reason */
+            if(succs.size() <= 1)
+                continue;
+            /* Compute the set of registers on successors dep */
+            std::map< schedule_dep::reg_t, std::vector< schedule_dep > > reg_succs;
+
+            for(size_t i = 0; i < succs.size(); i++)
+                if(succs[i].kind() == schedule_dep::data_dep)
+                    reg_succs[succs[i].reg()].push_back(succs[i]);
+
+            if(0)
+            {
+                std::cout << "Unit: " << unit->to_string() << "\n";
+                std::map< schedule_dep::reg_t, std::vector< schedule_dep > >::iterator reg_succs_it = reg_succs.begin();
+                for(; reg_succs_it != reg_succs.end(); ++reg_succs_it)
+                {
+                    std::cout << "  Register " << reg_succs_it->first << "\n";
+                    for(size_t i = 0; i < reg_succs_it->second.size(); i++)
+                        std::cout << "    To " << reg_succs_it->second[i].to()->to_string() << "\n";
+                }
+            }
+            
+            /* Try each register R */
+            std::map< schedule_dep::reg_t, std::vector< schedule_dep > >::iterator reg_succs_it = reg_succs.begin();
+            for(; reg_succs_it != reg_succs.end(); ++reg_succs_it)
+            {
+                std::vector< schedule_dep > reg_use = reg_succs_it->second;
+
+                /* See of one successor S of U dominate all use
+                 * NOTE: S can be any successor of U
+                 * NOTE: there can be several dominators, we list tham all */
+                std::vector< const schedule_unit * > dominators;
+                
+                for(size_t dom_idx = 0; dom_idx < succs.size(); dom_idx++)
+                {
+                    for(size_t i = 0; i < reg_use.size(); i++)
+                        if(!path[name_map[succs[dom_idx].to()]][name_map[reg_use[i].to()]])
+                            goto Lskip;
+                    dominators.push_back(succs[dom_idx].to());
+                    Lskip:
+                    continue;
+                }
+
+                schedule_dep::reg_t cur_reg_it = reg_succs_it->first;
+                schedule_dep::reg_t new_reg_id = reg_succs_it->first;
+                bool new_id_generated = false;
+                
+                for(size_t dom_idx = 0; dom_idx < dominators.size(); dom_idx++)
+                {
+                    /* There is dominator D */
+                    const schedule_unit *dom = dominators[dom_idx];
+
+                    bool dominator_is_in_reg_use = false;
+                    bool non_dominator_is_in_reg_use = false;
+                    for(size_t i = 0; i < reg_use.size(); i++)
+                        if(dom == reg_use[i].to())
+                            dominator_is_in_reg_use = true;
+                        else
+                            non_dominator_is_in_reg_use = true;
+                    /* There must a node in reg use which is not the dominator */
+                    if(!non_dominator_is_in_reg_use)
+                        continue; /* next dominator */
+
+                    /*
+                    std::cout << "Dominator: " << dom->to_string() << "\n";
+                    for(size_t i = 0; i < reg_use.size(); i++)
+                        std::cout << "  -> " << reg_use[i].to()->to_string() << "\n";
+                    */ 
+
+                    /* For each dependency (U,V) on register R, remove (U,V) */
+                    dag.remove_dependencies(reg_use);
+                    /* For each old dependency (U,V) on register R, add (D,V)
+                     * NOTE: beware if the dominator is one of the considered child !
+                     *       Otherwise, we'll create a self-loop */
+                    for(size_t i = 0; i < reg_use.size(); i++)
+                        if(dom != reg_use[i].to())
+                        {
+                            /* lazy generation to avoid wating generated registers */
+                            if(!new_id_generated)
+                            {
+                                new_reg_id = dag.generate_unique_reg_id();
+                                new_id_generated = true;
+                            }
+                            reg_use[i].set_reg(new_reg_id); /* use a new reg id if told */
+                            reg_use[i].set_from(dom);
+                        }
+
+                    /* Add (U,D) on R
+                     * Except if dominator_is_in_reg_use because the previous
+                     * didn't modify the link so the (U,D) edge is already in the list */
+                    if(!dominator_is_in_reg_use)
+                        reg_use.push_back(schedule_dep(unit, dom,
+                            schedule_dep::data_dep, cur_reg_it)); /* keep reg id here */
+
+                    dag.add_dependencies(reg_use);
+                    
+                    goto Lgraph_changed;
+                }
+            }
+        }
+
+        /* Graph did not change */
+        break;
+
+        Lgraph_changed:
+        continue;
+    }
+
     s.schedule(dag, c);
 }
 
