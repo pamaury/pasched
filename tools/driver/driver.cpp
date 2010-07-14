@@ -132,6 +132,34 @@ class dag_accumulator : public pasched::transformation
     mutable pasched::generic_schedule_dag m_dag;
 };
 
+class dag_statistics : public pasched::transformation
+{
+    public:
+    dag_statistics() :m_count(0), m_trivials(0) { }
+    virtual ~dag_statistics() {}
+
+    virtual void transform(pasched::schedule_dag& dag, const pasched::scheduler& s, pasched::schedule_chain& c,
+        pasched::transformation_status& status) const
+    {
+        status.begin_transformation();
+        status.set_modified_graph(false);
+        status.set_junction(false);
+        status.set_deadlock(false);
+        
+        m_count++;
+        if(dag.get_units().size() <= 1)
+            m_trivials++;
+        /* forward */
+        s.schedule(dag, c);
+
+        status.end_transformation();
+    }
+
+    public:
+    mutable size_t m_count;
+    mutable size_t m_trivials;
+};
+
 const pasched::transformation *simplify_order_cuts()
 {
     return new pasched::simplify_order_cuts;
@@ -356,69 +384,9 @@ void strip_redundant_data_deps(pasched::schedule_dag& dag)
     dag.remove_dependencies(to_remove);
 }
 
-void break_symmetrical_branch_merge(pasched::schedule_dag& dag)
+const pasched::transformation *break_symmetrical_branch_merge()
 {
-    sched_dep_vec_t to_add;
-    
-    for(size_t u = 0; u < dag.get_units().size(); u++)
-    {
-        sched_unit_ptr_t unit = dag.get_units()[u];
-        sched_unit_set_t preds_order_succs;
-        sched_unit_set_t preds_preds;
-        unsigned irp = 0;
-        sched_unit_set_t preds = dag.get_reachable(unit, sched_dag_t::rf_follow_preds_data | sched_dag_t::rf_immediate);
-
-        if(preds.size() < 2)
-            continue;
-        if(dag.get_reachable(unit, sched_dag_t::rf_follow_preds_order | sched_dag_t::rf_immediate).size() != 0)
-            continue;
-
-        for(sched_unit_set_t::iterator it = preds.begin(); it != preds.end(); ++it)
-        {
-            sched_unit_ptr_t the_pred = *it;
-            /* - must be single data successor */
-            if(dag.get_reachable(the_pred, sched_dag_t::rf_follow_succs_data | sched_dag_t::rf_immediate).size() != 1)
-                goto Lnext;
-            /* - predecessors's predecessors */
-            sched_unit_set_t this_preds_order_succs = dag.get_reachable(the_pred, sched_dag_t::rf_follow_succs_order | sched_dag_t::rf_immediate);
-            sched_unit_set_t this_preds_preds = dag.get_reachable(the_pred, sched_dag_t::rf_follow_preds | sched_dag_t::rf_immediate);
-            
-            if(it == preds.begin())
-            {
-                preds_preds = this_preds_preds;
-                preds_order_succs = this_preds_order_succs;
-                irp = the_pred->internal_register_pressure();
-            }
-            else
-            {
-                if(preds_preds != this_preds_preds)
-                    goto Lnext;
-                if(preds_order_succs != this_preds_order_succs)
-                    goto Lnext;
-                if(irp != the_pred->internal_register_pressure())
-                    goto Lnext;
-            }
-        }
-
-        for(sched_unit_set_t::iterator it = preds.begin(); it != preds.end(); ++it)
-        {
-            sched_unit_set_t::iterator it2 = it;
-            ++it2;
-            if(it2 == preds.end())
-                break;
-
-            sched_dep_t d;
-            d.set_from(*it);
-            d.set_to(*it2);
-            d.set_kind(sched_dep_t::order_dep);
-            to_add.push_back(d);
-        }
-
-        Lnext:
-        continue;
-    }
-
-    dag.add_dependencies(to_add);
+    return new pasched::break_symmetrical_branch_merge;
 }
 
 void reg_analysis_info(pasched::schedule_dag& dag)
@@ -587,7 +555,7 @@ pass_t passes[] =
     //{"strip-redundant-data-deps", "", &strip_redundant_data_deps},
     {"smart-fuse-two-units-conservative", "", &smart_fuse_two_units_conservative},
     {"smart-fuse-two-units-aggressive", "", &smart_fuse_two_units_aggressive},
-    //{"break-symmetrical-branch-merge", "", &break_symmetrical_branch_merge},
+    {"break-symmetrical-branch-merge", "", &break_symmetrical_branch_merge},
     //{"reg-analysis-info", "", &reg_analysis_info},
     {0}
 };
@@ -625,6 +593,8 @@ void display_usage()
 
 int __main(int argc, char **argv)
 {
+    //pasched::set_debug(std::cout);
+    
     if(argc < 5)
     {
         display_usage();
@@ -675,6 +645,8 @@ int __main(int argc, char **argv)
         return 1;
     }
 
+    #if 0
+    
     pasched::transformation_pipeline pipeline;
     /* build pipeline */
     for(int i = 5; i < argc; i++)
@@ -701,9 +673,36 @@ int __main(int argc, char **argv)
     pasched::generic_schedule_chain chain;
     pasched::basic_status status;
     pipeline.transform(dag, sched, chain, status);
+    
+    #else
 
+    pasched::transformation_pipeline pipeline;
+    pasched::transformation_pipeline snd_stage_pipe;
+    pasched::transformation_loop loop(&snd_stage_pipe);
+    dag_accumulator accumulator;
+    dag_statistics statistics;
+    pipeline.add_stage(new pasched::unique_reg_ids);
+    pipeline.add_stage(&loop);
+    pipeline.add_stage(&accumulator);
+    pipeline.add_stage(&statistics);
+    snd_stage_pipe.add_stage(new pasched::strip_useless_order_deps);
+    snd_stage_pipe.add_stage(new pasched::split_def_use_dom_use_deps);
+    snd_stage_pipe.add_stage(new pasched::smart_fuse_two_units(false));
+    snd_stage_pipe.add_stage(new pasched::simplify_order_cuts);
+    snd_stage_pipe.add_stage(new pasched::break_symmetrical_branch_merge);
+    snd_stage_pipe.add_stage(new pasched::collapse_chains);
+
+    pasched::basic_list_scheduler sched;
+    pasched::generic_schedule_chain chain;
+    pasched::basic_status status;
+    pipeline.transform(dag, sched, chain, status);
+    #endif
+
+    /*
     std::cout << "Status: Mod=" << status.has_modified_graph() << " Junction=" << status.is_junction()
             << " Deadlock=" << status.is_deadlock() << "\n";
+    */
+    std::cout << "Trivial-DAGs-scheduled: " << statistics.m_trivials << "/" << statistics.m_count << "\n";
     
     formats[to].write(accumulator.get_dag(), argv[4]);
     

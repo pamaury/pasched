@@ -85,6 +85,10 @@ std::vector< T > set_to_vector(const std::set< T >& s)
 
 std::string trim(const std::string& s);
 
+std::ostream& debug();
+
+void set_debug(std::ostream& s);
+
 }
 
 #endif // __PAMAURY_TOOLS_HPP__

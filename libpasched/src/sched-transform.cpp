@@ -101,7 +101,9 @@ glued_transformation_scheduler::~glued_transformation_scheduler()
 
 void glued_transformation_scheduler::schedule(schedule_dag& d, schedule_chain& c) const
 {
-     m_transform->transform(d, *m_scheduler, c, m_status);
+    debug() << "---> glued_transformation_scheduler::schedule\n";
+    m_transform->transform(d, *m_scheduler, c, m_status);
+    debug() << "<--- glued_transformation_scheduler::schedule\n";
 }
 
 /**
@@ -114,8 +116,11 @@ packed_status::packed_status(transformation_status& status)
 
 packed_status::~packed_status()
 {
+    /* don't do this because such a situation can happen if someone triggers an exception */
+    /*
     if(m_level != 0)
         throw std::runtime_error("packed_status::~packed_status detected an invalid stacking level");
+    */ 
 }
 
 void packed_status::begin_transformation()
@@ -179,9 +184,19 @@ packed_transformation::~packed_transformation()
 void packed_transformation::transform(schedule_dag& d, const scheduler& s, schedule_chain& c,
     transformation_status& status) const
 {
+    debug() << "---> packed_transformation::transform\n";
     packed_status ps(status);
     glued_transformation_scheduler internal_sched(m_second, &s, ps);
     m_first->transform(d, internal_sched, c, ps);
+    debug() << "<--- packed_transformation::transform\n";
+}
+
+void packed_transformation::set_transformation(bool first, const transformation *t)
+{
+    if(first)
+        m_first = t;
+    else
+        m_second = t;
 }
 
 /**
@@ -210,12 +225,60 @@ void transformation_pipeline::add_stage(const transformation *transform)
 void transformation_pipeline::transform(schedule_dag& d, const scheduler& s, schedule_chain& c,
     transformation_status& status) const
 {
+    debug() << "---> transformation_pipeline::transform\n";
     if(m_pipeline.size() == 0)
-        throw std::runtime_error("transformation_pipeline::transform called with empty pipeline");
-    if(m_packers.size() > 0)
+    {
+        /* act has a transparent transformation */
+        status.begin_transformation();
+        status.set_modified_graph(false);
+        status.set_deadlock(false);
+        status.set_junction(false);
+        
+        s.schedule(d, c);
+        status.end_transformation();
+    }
+    else if(m_packers.size() > 0)
         return m_packers.back()->transform(d, s, c, status);
     else
         return m_pipeline[0]->transform(d, s, c, status);
+    debug() << "<--- transformation_pipeline::transform\n";
+}
+
+/**
+ * auxillary_transformation_loop
+ */
+auxillary_transformation_loop::auxillary_transformation_loop(const transformation *x)
+    :m_transform(x)
+{
+}
+
+auxillary_transformation_loop::~auxillary_transformation_loop()
+{
+}
+
+void auxillary_transformation_loop::transform(schedule_dag& d, const scheduler& s, schedule_chain& c,
+    transformation_status& status) const
+{
+    debug() << "---> auxillary_transformation_loop::transform\n";
+    if(!status.has_modified_graph() && !status.is_junction())
+        s.schedule(d, c);
+    else
+    {
+        /**
+         * Important note:
+         * we WANT to use a new/fresh status because this status will help us
+         * determine if something changed. If we reached this point, it means
+         * something changed, if we don't do that, we'll loop forever
+         */
+        basic_status bs;
+        m_transform->transform(d, s, c, bs);
+    }
+    debug() << "<--- auxillary_transformation_loop::transform\n";
+}
+
+void auxillary_transformation_loop::set_transformation(const transformation *t)
+{
+    m_transform = t;
 }
 
 /**
@@ -233,7 +296,28 @@ transformation_loop::~transformation_loop()
 void transformation_loop::transform(schedule_dag& d, const scheduler& s, schedule_chain& c,
     transformation_status& status) const
 {
-    
+    debug() << "---> transformation_loop::transform\n";
+    /**
+     * Little hack here: we first build an auxillary object A which does the
+     * following: it look at the status flags and if nothing changed then
+     * execute the schedueler. Otherwise, it applies another trasnformation
+     * given in parameter.
+     *
+     * Then we build a packer P which pack the transformation X with A.
+     * At this point we have P=X;A
+     *
+     * Finally, we decide that the transformation A executes is P.
+     * So we have something like:
+     *
+     * P=X;(if [not changed] then S else X;(if [not changed] ...))
+     *
+     */
+    auxillary_transformation_loop atl(0);
+    packed_transformation ps(m_transform, &atl);
+    atl.set_transformation(&ps);
+
+    ps.transform(d, s, c, status);
+    debug() << "<--- transformation_loop::transform\n";
 }
 
 /**
@@ -251,6 +335,7 @@ unique_reg_ids::~unique_reg_ids()
 void unique_reg_ids::transform(schedule_dag& dag, const scheduler& s, schedule_chain& c,
     transformation_status& status) const
 {
+    debug() << "---> unique_reg_ids::transform\n";
     std::vector< schedule_dep > to_remove;
     std::vector< schedule_dep > to_add;
 
@@ -287,6 +372,8 @@ void unique_reg_ids::transform(schedule_dag& dag, const scheduler& s, schedule_c
     s.schedule(dag, c);
 
     status.end_transformation();
+
+    debug() << "<--- unique_reg_ids::transform\n";
 }
 
 /**
@@ -304,6 +391,7 @@ strip_useless_order_deps::~strip_useless_order_deps()
 void strip_useless_order_deps::transform(schedule_dag& dag, const scheduler& s, schedule_chain& c,
     transformation_status& status) const
 {
+    debug() << "---> strip_useless_order_deps::transform\n";
     /* Shortcuts */
     const std::vector< const schedule_unit * >& units = dag.get_units();
     size_t n = units.size();
@@ -399,6 +487,8 @@ void strip_useless_order_deps::transform(schedule_dag& dag, const scheduler& s, 
     s.schedule(dag, c);
 
     status.end_transformation();
+
+    debug() << "<--- strip_useless_order_deps::transform\n";
 }
 
 /**
@@ -417,6 +507,7 @@ smart_fuse_two_units::~smart_fuse_two_units()
 void smart_fuse_two_units::transform(schedule_dag& dag, const scheduler& s, schedule_chain& c,
     transformation_status& status) const
 {
+    debug() << "---> smart_fuse_two_units::transform\n";
     /* Do two passes: first don't allow approx and then do so */
     bool allow_approx = false;
     std::vector< chain_schedule_unit * > fused;
@@ -516,6 +607,8 @@ void smart_fuse_two_units::transform(schedule_dag& dag, const scheduler& s, sche
     }
 
     status.end_transformation();
+
+    debug() << "<--- smart_fuse_two_units::transform\n";
 }
 
 /**
@@ -540,7 +633,10 @@ void simplify_order_cuts::do_transform(schedule_dag& dag, const scheduler& s, sc
     transformation_status& status, int level) const
 {
     if(level == 0)
+    {
+        debug() << "---> simplify_order_cuts::transform\n";
         status.begin_transformation();
+    }
     
     for(size_t u = 0; u < dag.get_units().size(); u++)
     {
@@ -573,7 +669,11 @@ void simplify_order_cuts::do_transform(schedule_dag& dag, const scheduler& s, sc
         /* and then bottom */
         do_transform(dag, s, c, status, level + 1);
 
-        status.end_transformation();
+        if(level == 0)
+        {
+            status.end_transformation();
+            debug() << "<--- simplify_order_cuts::transform\n";
+        }
         return;
     }
 
@@ -587,7 +687,10 @@ void simplify_order_cuts::do_transform(schedule_dag& dag, const scheduler& s, sc
     s.schedule(dag, c);
 
     if(level == 0)
+    {
         status.end_transformation();
+        debug() << "<--- simplify_order_cuts::transform\n";
+    }
 }
 
 /**
@@ -614,6 +717,7 @@ void split_def_use_dom_use_deps::transform(schedule_dag& dag, const scheduler& s
     /* path[u][v] is true if there is a path from u to v */
     std::vector< std::vector< bool > > path;
 
+    debug() << "---> split_def_use_dom_use_deps::transform\n";
     status.begin_transformation();
 
     /* First compute path map, it will not changed during the algorithm
@@ -763,6 +867,188 @@ void split_def_use_dom_use_deps::transform(schedule_dag& dag, const scheduler& s
     s.schedule(dag, c);
 
     status.end_transformation();
+    debug() << "<--- split_def_use_dom_use_deps::transform\n";
+}
+
+/**
+ * break_symmetrical_branch_merge
+ */
+break_symmetrical_branch_merge::break_symmetrical_branch_merge()
+{
+}
+
+break_symmetrical_branch_merge::~break_symmetrical_branch_merge()
+{
+}
+
+void break_symmetrical_branch_merge::transform(schedule_dag& dag, const scheduler& s, schedule_chain& c,
+    transformation_status& status) const
+{
+    std::vector< schedule_dep > to_add;
+
+    debug() << "---> break_symmetrical_branch_merge::transform\n";
+    status.begin_transformation();
+    
+    for(size_t u = 0; u < dag.get_units().size(); u++)
+    {
+        const schedule_unit *unit = dag.get_units()[u];
+        std::set< const schedule_unit * > preds_order_succs;
+        std::set< const schedule_unit * > preds_preds;
+        unsigned irp = 0;
+        std::set< const schedule_unit * > preds = dag.get_reachable(unit,
+            schedule_dag::rf_follow_preds_data | schedule_dag::rf_immediate);
+
+        //debug() << "  Unit: " << unit->to_string() << "\n";
+
+        if(preds.size() < 2)
+            continue;
+        if(dag.get_reachable(unit, schedule_dag::rf_follow_preds_order | schedule_dag::rf_immediate).size() != 0)
+            continue;
+        for(std::set< const schedule_unit * >::iterator it = preds.begin(); it != preds.end(); ++it)
+        {
+            const schedule_unit *the_pred = *it;
+            //debug() << "    Pred: " << the_pred->to_string() << "\n";
+            /* - must be single data successor */
+            if(dag.get_reachable(the_pred, schedule_dag::rf_follow_succs_data | schedule_dag::rf_immediate).size() != 1)
+                goto Lnext;
+            /* - predecessors's predecessors */
+            std::set< const schedule_unit * > this_preds_order_succs = dag.get_reachable(the_pred,
+                schedule_dag::rf_follow_succs_order | schedule_dag::rf_immediate);
+            std::set< const schedule_unit * > this_preds_preds = dag.get_reachable(the_pred,
+                schedule_dag::rf_follow_preds | schedule_dag::rf_immediate);
+            
+            if(it == preds.begin())
+            {
+                preds_preds = this_preds_preds;
+                preds_order_succs = this_preds_order_succs;
+                irp = the_pred->internal_register_pressure();
+            }
+            else
+            {
+                if(preds_preds != this_preds_preds)
+                    goto Lnext;
+                if(preds_order_succs != this_preds_order_succs)
+                    goto Lnext;
+                if(irp != the_pred->internal_register_pressure())
+                    goto Lnext;
+            }
+        }
+
+        for(std::set< const schedule_unit * >::iterator it = preds.begin(); it != preds.end(); ++it)
+        {
+            std::set< const schedule_unit * >::iterator it2 = it;
+            ++it2;
+            if(it2 == preds.end())
+                break;
+
+            schedule_dep d;
+            d.set_from(*it);
+            d.set_to(*it2);
+            d.set_kind(schedule_dep::order_dep);
+            to_add.push_back(d);
+        }
+
+        Lnext:
+        continue;
+    }
+
+    dag.add_dependencies(to_add);
+
+    status.set_modified_graph(to_add.size() > 0);
+    status.set_deadlock(false);
+    status.set_junction(false);
+
+    s.schedule(dag, c);
+    
+
+    status.end_transformation();
+    debug() << "<--- break_symmetrical_branch_merge::transform\n";
+}
+
+/**
+ * collapse_chains
+ */
+collapse_chains::collapse_chains()
+{
+}
+
+collapse_chains::~collapse_chains()
+{
+}
+
+void collapse_chains::transform(schedule_dag& dag, const scheduler& s, schedule_chain& c,
+    transformation_status& status) const
+{
+    debug() << "---> collapse_chains::transform\n";
+    status.begin_transformation();
+
+    /* Check if the graph is a chain */
+    if(dag.get_roots().size() != 1)
+        goto Lnot_chain;
+
+    {
+        std::vector< const schedule_unit * > chain;
+        const schedule_unit *unit = dag.get_roots()[0];
+        while(true)
+        {
+            chain.push_back(unit);
+            size_t s = dag.get_reachable(unit, schedule_dag::rf_follow_succs |
+                        schedule_dag::rf_immediate).size();
+            if(s == 0)
+                break;
+            if(s != 1)
+                goto Lnot_chain;
+            unit = dag.get_succs(unit)[0].to();
+        }
+
+        if(chain.size() != dag.get_units().size())
+            goto Lnot_chain;
+        #if 0
+        /* no schedule */
+        status.set_modified_graph(false);
+        status.set_junction(false);
+        status.set_deadlock(true);
+
+        c.insert_units_at(c.get_unit_count(), chain);
+
+        #else
+        chain_schedule_unit scu;
+        scu.get_chain() = chain;
+
+        dag.clear();
+        dag.add_unit(&scu);
+
+        status.set_modified_graph(false);
+        status.set_junction(false);
+        status.set_deadlock(false);
+
+        s.schedule(dag, c);
+
+        for(size_t i = 0; i < c.get_unit_count(); i++)
+        {
+            if(c.get_unit_at(i) == &scu)
+            {
+                c.expand_unit_at(i, chain);
+                break;
+            }
+        }
+
+        #endif
+    }
+
+    /* return */
+    goto Lret;
+
+    Lnot_chain:
+    /* normal schedule */
+    status.set_modified_graph(false);
+    status.set_junction(false);
+    status.set_deadlock(false);
+    s.schedule(dag, c);
+
+    Lret:
+    status.end_transformation();
+    debug() << "<--- collapse_chains::transform\n";
 }
 
 }

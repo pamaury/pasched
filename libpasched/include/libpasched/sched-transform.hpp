@@ -123,6 +123,8 @@ class packed_transformation : public transformation
     packed_transformation(const transformation *first, const transformation *second);
     ~packed_transformation();
 
+    virtual void set_transformation(bool first, const transformation *t);
+
     virtual void transform(schedule_dag& d, const scheduler& s, schedule_chain& c,
         transformation_status& status) const;
 
@@ -145,6 +147,21 @@ class transformation_pipeline : public transformation
     protected:
     std::vector< const transformation * > m_pipeline;
     std::vector< packed_transformation * > m_packers;
+};
+
+class auxillary_transformation_loop : public transformation
+{
+    public:
+    auxillary_transformation_loop(const transformation *x);
+    ~auxillary_transformation_loop();
+
+    virtual void set_transformation(const transformation *t);
+
+    virtual void transform(schedule_dag& d, const scheduler& s, schedule_chain& c,
+        transformation_status& status) const;
+    
+    protected:
+    const transformation *m_transform;
 };
 
 class transformation_loop : public transformation
@@ -248,6 +265,33 @@ class split_def_use_dom_use_deps : public transformation
     protected:
     bool m_generate_new_reg_ids;
 };
+
+/**
+ *
+ */
+class break_symmetrical_branch_merge : public transformation
+{
+    public:
+    break_symmetrical_branch_merge();
+    virtual ~break_symmetrical_branch_merge();
+
+    virtual void transform(schedule_dag& d, const scheduler& s, schedule_chain& c,
+        transformation_status& status) const;
+};
+
+/**
+ *
+ */
+class collapse_chains : public transformation
+{
+    public:
+    collapse_chains();
+    virtual ~collapse_chains();
+
+    virtual void transform(schedule_dag& d, const scheduler& s, schedule_chain& c,
+        transformation_status& status) const;
+};
+
 
 }
 
