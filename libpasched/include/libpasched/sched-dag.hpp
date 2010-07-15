@@ -198,7 +198,7 @@ struct dag_printer_opt
     enum dag_printer_opt_type
     {
         /* Color a node */
-        po_color_node,
+        po_color_node
     };
 
     dag_printer_opt_type type;

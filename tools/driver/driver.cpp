@@ -411,102 +411,6 @@ void reg_analysis_info(pasched::schedule_dag& dag)
 }
 
 /**
- * Helper function that split dag with more than one connected component
- */
-void branch_dag_list(std::list< pasched::generic_schedule_dag >& list)
-{
-    std::list< pasched::generic_schedule_dag >::iterator it = list.begin();
-
-    //std::cout << "before: " << list.size() << " DAGs in the list\n";
-
-    while(it != list.end())
-    {
-        /* Empty DAG ? */
-        if(it->get_units().size() == 0)
-        {
-            std::list< pasched::generic_schedule_dag >::iterator it2 = it;
-            ++it;
-            list.erase(it2);
-            continue;
-        }
-        
-        sched_unit_set_t cc;
-        std::queue< sched_unit_ptr_t > q;
-        q.push(it->get_units()[0]);
-
-        while(!q.empty())
-        {
-            sched_unit_ptr_t u = q.front();
-            q.pop();
-            if(cc.find(u) != cc.end())
-                continue;
-            cc.insert(u);
-
-            for(size_t i = 0; i < it->get_preds(u).size(); i++)
-                q.push(it->get_preds(u)[i].from());
-            for(size_t i = 0; i < it->get_succs(u).size(); i++)
-                q.push(it->get_succs(u)[i].to());
-        }
-
-        /* connected graph ? */
-        if(cc.size() == it->get_units().size())
-        {
-            ++it;
-            continue;
-        }
-
-        /* extract this connected component */
-        list.push_front(pasched::generic_schedule_dag());
-
-        sched_unit_set_t::iterator set_it = cc.begin();
-
-        for(; set_it != cc.end(); ++set_it)
-            list.front().add_unit(*set_it);
-
-        set_it = cc.begin();
-        for(; set_it != cc.end(); ++set_it)
-        {
-            for(size_t i = 0; i < it->get_preds(*set_it).size(); i++)
-            {
-                const sched_dep_t& d = it->get_preds(*set_it)[i];
-                if(cc.find(d.from()) != cc.end())
-                    list.front().add_dependency(d);
-            }
-        }
-
-        /* remove it from dag */
-        set_it = cc.begin();
-        for(; set_it != cc.end(); ++set_it)
-            it->remove_unit(*set_it);
-
-        /* restart loop with the same dag */
-    }
-
-    //std::cout << "after: " << list.size() << " DAGs in the list\n";
-}
-
-/**
- * Helper function that merge a set of DAG in one DAG as side by side,
- * unrelated subgraphs
- */
-void merge_dag_list(std::list< pasched::generic_schedule_dag >& list, pasched::schedule_dag& dag)
-{
-    std::list< pasched::generic_schedule_dag >::iterator it = list.begin();
-
-    for(;it != list.end(); ++it)
-    {
-        for(size_t u = 0; u < it->get_units().size(); u++)
-            dag.add_unit(it->get_units()[u]);
-        for(size_t u = 0; u < it->get_units().size(); u++)
-        {
-            sched_unit_ptr_t unit = it->get_units()[u];
-            for(size_t i = 0; i < it->get_preds(unit).size(); i++)
-                dag.add_dependency(it->get_preds(unit)[i]);
-        }
-    }
-}
-
-/**
  * Few tables for passes registration and blabla
  */
 typedef void (*read_cb_t)(const char *filename, pasched::schedule_dag& dag);
@@ -541,7 +445,7 @@ format_t formats[] =
     {"dot", dot_ext, "Graphviz file", 0, &dot_write},
     {"dotsvg", dotsvg_ext, "Graphviz file rendered to SVG", 0, &dotsvg_write},
     {"null", null_ext, "Drop output to the void", 0, &null_write},
-    {0}
+    {0, 0, 0, 0, 0}
 };
 
 pass_t passes[] =
@@ -557,7 +461,7 @@ pass_t passes[] =
     {"smart-fuse-two-units-aggressive", "", &smart_fuse_two_units_aggressive},
     {"break-symmetrical-branch-merge", "", &break_symmetrical_branch_merge},
     //{"reg-analysis-info", "", &reg_analysis_info},
-    {0}
+    {0, 0, 0}
 };
 
 /**

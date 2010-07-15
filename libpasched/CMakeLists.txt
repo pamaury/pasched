@@ -11,7 +11,7 @@ file(GLOB pasched_SOURCE_FILES src/*.cpp)
 file(GLOB pasched_PUBLIC_HEADERS include/*.hpp)
 file(GLOB pasched_LIBPASCHED_HEADERS include/libpasched/*.hpp)
 
-add_definitions(-g -Wall)
+add_definitions(-g -pedantic -W -Wall)
 include_directories(${pasched_SOURCE_DIR}/include/libpasched)
 include_directories(${GLPK_INCLUDE_DIR})
 add_library(pasched SHARED ${pasched_SOURCE_FILES})

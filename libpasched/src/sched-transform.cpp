@@ -150,6 +150,7 @@ bool packed_status::has_modified_graph() const
 
 void packed_status::set_deadlock(bool d)
 {
+    (void) d;
     /* don't keep track of deadlock */
 }
 
