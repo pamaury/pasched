@@ -2,9 +2,13 @@
 #define __PAMAURY_SCHED_DAG_VIEWER_HPP__
 
 #include "sched-dag.hpp"
+#include "sched-chain.hpp"
 
 namespace PAMAURY_SCHEDULER_NS
 {
+
+void debug_view_chain(const schedule_chain& dag,
+    const std::vector< dag_printer_opt >& opts = std::vector< dag_printer_opt >());
 
 /**
  * Debug function which prints and render a DAG and display it in a window.

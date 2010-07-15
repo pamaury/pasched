@@ -160,6 +160,37 @@ class dag_statistics : public pasched::transformation
     mutable size_t m_trivials;
 };
 
+class trivial_dag_remover : public pasched::transformation
+{
+    public:
+    trivial_dag_remover() { }
+    virtual ~trivial_dag_remover() {}
+
+    virtual void transform(pasched::schedule_dag& dag, const pasched::scheduler& s, pasched::schedule_chain& c,
+        pasched::transformation_status& status) const
+    {
+        status.begin_transformation();
+        status.set_modified_graph(false);
+        status.set_junction(false);
+
+        if(dag.get_units().size() <= 1)
+        {
+            status.set_deadlock(true);
+            if(dag.get_units().size() == 1)
+                c.append_unit(dag.get_units()[0]);
+        }
+        else
+        {
+            status.set_deadlock(false);
+            s.schedule(dag, c);
+        }
+
+        status.end_transformation();
+    }
+
+    public:
+};
+
 const pasched::transformation *simplify_order_cuts()
 {
     return new pasched::simplify_order_cuts;
@@ -585,10 +616,12 @@ int __main(int argc, char **argv)
     pasched::transformation_loop loop(&snd_stage_pipe);
     dag_accumulator accumulator;
     dag_statistics statistics;
+    trivial_dag_remover remover;
     pipeline.add_stage(new pasched::unique_reg_ids);
     pipeline.add_stage(&loop);
-    pipeline.add_stage(&accumulator);
     pipeline.add_stage(&statistics);
+    pipeline.add_stage(&remover);
+    pipeline.add_stage(&accumulator);
     snd_stage_pipe.add_stage(new pasched::strip_useless_order_deps);
     snd_stage_pipe.add_stage(new pasched::split_def_use_dom_use_deps);
     snd_stage_pipe.add_stage(new pasched::smart_fuse_two_units(false));
@@ -607,7 +640,7 @@ int __main(int argc, char **argv)
     std::cout << "Status: Mod=" << status.has_modified_graph() << " Junction=" << status.is_junction()
             << " Deadlock=" << status.is_deadlock() << "\n";
     */
-    std::cout << "Trivial-DAGs-scheduled: " << statistics.m_trivials << "/" << statistics.m_count << "\n";
+    //std::cout << "Trivial-DAGs-scheduled: " << statistics.m_trivials << "/" << statistics.m_count << "\n";
     
     formats[to].write(accumulator.get_dag(), argv[4]);
     

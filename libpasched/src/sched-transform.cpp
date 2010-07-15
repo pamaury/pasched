@@ -1,5 +1,6 @@
 #include <sched-transform.hpp>
 #include <tools.hpp>
+#include <sched-dag-viewer.hpp>
 #include <sstream>
 #include <stdexcept>
 #include <cassert>
@@ -1127,12 +1128,14 @@ void split_merge_branch_units::do_transform(schedule_dag& dag, const scheduler& 
             }
 
             s.schedule(dag, c);
-            if(c.get_unit_at(c.get_unit_count() - 1) != unit)
+            if(c.get_unit_count() == 0 || c.get_unit_at(c.get_unit_count() - 1) != unit)
                 throw std::runtime_error("split_merge_branch_units::do_transform detected a bad schedule");
             c.remove_unit_at(c.get_unit_count() - 1);
 
             s.schedule(*cpy, c);
             delete cpy;
+
+            return;
         }
 
         Lskip:
