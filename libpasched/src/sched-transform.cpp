@@ -1191,13 +1191,18 @@ void strip_dataless_units::transform(schedule_dag& dag, const scheduler& s, sche
     debug() << "---> strip_dataless_units::transform\n";
     status.begin_transformation();
 
-    std::vector< std::pair< const schedule_unit *, std::vector< const schedule_unit * > > > stripped;
+    std::vector< std::pair< const schedule_unit *,
+                    std::pair< std::vector< const schedule_unit * >,
+                               std::vector< const schedule_unit * > > > > stripped;
     
     /* We repeat everything from the beginning at each step because
      * each modification can add order dependencies and delete a node,
      * so it's easier this way */
     while(true)
     {
+        /* avoid trivial unit case */
+        if(dag.get_units().size() <= 1)
+            break;
         /* Find such a node */
         size_t u;
         const schedule_unit *unit = 0;
@@ -1245,8 +1250,11 @@ void strip_dataless_units::transform(schedule_dag& dag, const scheduler& s, sche
 
         stripped.push_back(
             std::make_pair(unit,
+            std::make_pair(
                 set_to_vector(dag.get_reachable(unit,
-                    schedule_dag::rf_follow_succs | schedule_dag::rf_immediate))));
+                    schedule_dag::rf_follow_succs | schedule_dag::rf_immediate)),
+                set_to_vector(dag.get_reachable(unit,
+                    schedule_dag::rf_follow_preds | schedule_dag::rf_immediate)))));
         /* Remove the unit */
         dag.remove_unit(unit);
     }
@@ -1261,21 +1269,42 @@ void strip_dataless_units::transform(schedule_dag& dag, const scheduler& s, sche
     for(size_t i = 0; i < stripped.size(); i++)
     {
         const schedule_unit *inst = stripped[i].first;
-        const std::vector< const schedule_unit * > succs = stripped[i].second;
-        size_t min_pos = c.get_unit_count();
+        const std::vector< const schedule_unit * > succs = stripped[i].second.first;
+        const std::vector< const schedule_unit * > preds = stripped[i].second.second;
+        size_t real_pos;
 
-        for(size_t pos = 0; pos < c.get_unit_count(); pos++)
+        if(succs.size() > 0)
         {
-            if(container_contains(succs, c.get_unit_at(pos)))
+            real_pos = c.get_unit_count();
+            for(size_t pos = 0; pos < c.get_unit_count(); pos++)
             {
-                min_pos = pos;
-                break;
+                if(container_contains(succs, c.get_unit_at(pos)))
+                {
+                    real_pos = pos;
+                    break;
+                }
             }
+            if(real_pos == c.get_unit_count())
+                throw std::runtime_error("strip_dataless_units::transform detected incomplete schedule");
+        }
+        else
+        {
+            if(preds.size() == 0)
+                throw std::runtime_error("strip_dataless_units::transform detected unit without preds/succs");
+            real_pos = 0;
+            for(int pos = c.get_unit_count() - 1; pos >= 0; pos--)
+            {
+                if(container_contains(preds, c.get_unit_at(pos)))
+                {
+                    real_pos = pos + 1;
+                    break;
+                }
+            }
+            if(real_pos == 0)
+                throw std::runtime_error("strip_dataless_units::transform detected incomplete schedule");
         }
 
-        if(min_pos == c.get_unit_count())
-            throw std::runtime_error("strip_dataless_units::transform detected incomplete schedule");
-        c.insert_unit_at(min_pos, inst);
+        c.insert_unit_at(real_pos, inst);
     }
 
     status.end_transformation();
