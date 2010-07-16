@@ -309,6 +309,19 @@ class split_merge_branch_units : public transformation
         transformation_status& status, int level) const;
 };
 
+/**
+ *
+ */
+class strip_dataless_units : public transformation
+{
+    public:
+    strip_dataless_units();
+    virtual ~strip_dataless_units();
+
+    virtual void transform(schedule_dag& d, const scheduler& s, schedule_chain& c,
+        transformation_status& status) const;
+};
+
 }
 
 #endif /* __PAMAURY_SCHED_XFORM_HPP__ */

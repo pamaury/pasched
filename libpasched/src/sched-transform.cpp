@@ -530,12 +530,12 @@ void smart_fuse_two_units::transform(schedule_dag& dag, const scheduler& s, sche
             std::set< const schedule_unit * > isuccs = dag.get_reachable(unit,
                 schedule_dag::rf_follow_succs | schedule_dag::rf_immediate);
 
-            /*
-            std::cout << "Unit: " << unit << "\n";
-            std::cout << "  VC=" << vc << "\n";
-            std::cout << "  VU=" << vu << "\n";
-            std::cout << "  VD=" << vd << "\n";
-            */
+            //*
+            //debug() << "Unit: " << unit->to_string() << "\n";
+            //debug() << "  VC=" << vc << "\n";
+            //debug() << "  VU=" << vu << "\n";
+            //debug() << "  VD=" << vd << "\n";
+            //*/
             
             /* Case 1
              * - unit has one predecessor only
@@ -543,6 +543,15 @@ void smart_fuse_two_units::transform(schedule_dag& dag, const scheduler& s, sche
              * - IRP of unit is lower than the number of destroyed variables
              * Then
              * - fuse unit to predecessor */
+            /*
+            if(ipreds.size() == 1)
+            {
+                debug() << "Unit: " << unit->to_string() << "\n";
+                debug() << "VC=" << vc.size() << "\n";
+                debug() << "VD=" << vd.size() << "\n";
+                debug() << "VU=" << vu.size() << "\n";
+            }
+            */
             if(ipreds.size() == 1 && vd.size() >= vc.size() &&
                     unit->internal_register_pressure() <= vd.size())
             {
@@ -985,27 +994,33 @@ void collapse_chains::transform(schedule_dag& dag, const scheduler& s, schedule_
     status.begin_transformation();
 
     /* Check if the graph is a chain */
-    if(dag.get_roots().size() != 1)
+    if(dag.get_units().size() <= 1 || dag.get_roots().size() != 1)
         goto Lnot_chain;
-
+    
     {
         std::vector< const schedule_unit * > chain;
         const schedule_unit *unit = dag.get_roots()[0];
+        unsigned irp = 0;
+        
         while(true)
         {
             chain.push_back(unit);
             size_t s = dag.get_reachable(unit, schedule_dag::rf_follow_succs |
                         schedule_dag::rf_immediate).size();
+            irp = std::max(irp, unit->internal_register_pressure());
             if(s == 0)
                 break;
             if(s != 1)
                 goto Lnot_chain;
+
+            irp = std::max(irp, (unsigned)dag.get_reg_create(unit).size());
+            
             unit = dag.get_succs(unit)[0].to();
         }
 
         if(chain.size() != dag.get_units().size())
             goto Lnot_chain;
-        #if 0
+        #if 1
         /* no schedule */
         status.set_modified_graph(false);
         status.set_junction(false);
@@ -1016,6 +1031,7 @@ void collapse_chains::transform(schedule_dag& dag, const scheduler& s, schedule_
         #else
         chain_schedule_unit scu;
         scu.get_chain() = chain;
+        scu.set_internal_register_pressure(irp);
 
         dag.clear();
         dag.add_unit(&scu);
@@ -1156,6 +1172,115 @@ void split_merge_branch_units::do_transform(schedule_dag& dag, const scheduler& 
         status.end_transformation();
         debug() << "<--- split_merge_branch_units::transform\n";
     }
+}
+
+/**
+ * strip_dataless_units
+ */
+strip_dataless_units::strip_dataless_units()
+{
+}
+
+strip_dataless_units::~strip_dataless_units()
+{
+}
+
+void strip_dataless_units::transform(schedule_dag& dag, const scheduler& s, schedule_chain& c,
+    transformation_status& status) const
+{
+    debug() << "---> strip_dataless_units::transform\n";
+    status.begin_transformation();
+
+    std::vector< std::pair< const schedule_unit *, std::vector< const schedule_unit * > > > stripped;
+    
+    /* We repeat everything from the beginning at each step because
+     * each modification can add order dependencies and delete a node,
+     * so it's easier this way */
+    while(true)
+    {
+        /* Find such a node */
+        size_t u;
+        const schedule_unit *unit = 0;
+        for(u = 0; u < dag.get_units().size(); u++)
+        {
+            unit = dag.get_units()[u];
+            /* - costless */
+            if(unit->internal_register_pressure() != 0)
+                goto Lskip;
+            /* - no data in */
+            for(size_t i = 0; i < dag.get_preds(unit).size(); i++)
+                if(dag.get_preds(unit)[i].kind() != schedule_dep::order_dep)
+                    goto Lskip;
+
+            /* - no data out */
+            for(size_t i = 0; i < dag.get_succs(unit).size(); i++)
+                if(dag.get_succs(unit)[i].kind() != schedule_dep::order_dep)
+                    goto Lskip;
+            break;
+            Lskip:
+            continue;
+        }
+
+        /* Stop if not found */
+        if(u == dag.get_units().size())
+            break;
+        /* We will remove the unit but add some dependencies to keep correctness
+         * We add the dependencies at the end because it can invalidate
+         * the lists we are going through */
+        std::vector< schedule_dep > to_add;
+        
+        for(size_t i = 0; i < dag.get_preds(unit).size(); i++)
+            for(size_t j = 0; j < dag.get_succs(unit).size(); j++)
+            {
+                schedule_dep d;
+                d.set_from(dag.get_preds(unit)[i].from());
+                d.set_to(dag.get_succs(unit)[j].to());
+                d.set_kind(schedule_dep::order_dep);
+
+                to_add.push_back(d);
+            }
+
+        /* Add the dependencies */
+        dag.add_dependencies(to_add);
+
+        stripped.push_back(
+            std::make_pair(unit,
+                set_to_vector(dag.get_reachable(unit,
+                    schedule_dag::rf_follow_succs | schedule_dag::rf_immediate))));
+        /* Remove the unit */
+        dag.remove_unit(unit);
+    }
+
+    status.set_modified_graph(stripped.size() > 0);
+    status.set_deadlock(false);
+    status.set_junction(false);
+    debug_view_dag(dag);
+    s.schedule(dag, c);
+
+    std::reverse(stripped.begin(), stripped.end());
+
+    for(size_t i = 0; i < stripped.size(); i++)
+    {
+        const schedule_unit *inst = stripped[i].first;
+        const std::vector< const schedule_unit * > succs = stripped[i].second;
+        size_t min_pos = c.get_unit_count();
+
+        for(size_t pos = 0; pos < c.get_unit_count(); pos++)
+        {
+            if(container_contains(succs, c.get_unit_at(pos)))
+            {
+                min_pos = pos;
+                break;
+            }
+        }
+
+        if(min_pos == c.get_unit_count())
+            throw std::runtime_error("strip_dataless_units::transform detected incomplete schedule");
+        c.insert_unit_at(min_pos, inst);
+    }
+
+    status.end_transformation();
+    debug() << "<--- strip_dataless_units::transform\n";
 }
 
 }

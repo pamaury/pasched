@@ -333,16 +333,24 @@ chain_schedule_unit *schedule_dag::fuse_units(const schedule_unit *a,
 
     /* Optimality check */
     {
+        /**
+         * We require that each variable use by B either
+         * - is created by A
+         * - is destroyed for sure by B
+         * - is not destroyed for sure by B
+         * If there is variable for which we are not sure if B destroy it
+         * or not, then it's an overapproximation
+         */
         std::set< schedule_dep::reg_t > vu_min_vc_min_vdd_min_vd = set_minus(vu_min_vc_min_vdd, vd);
         if(vu_min_vc_min_vdd_min_vd.size() > 0)
         {
+            debug() << "Overapproximation in fuse units:\n";
+            debug() << "  Unit: " << b->to_string() << "\n";
             if(simulate_if_approx)
             {
                 delete c;
                 return 0;
             }
-            std::cout << "Overapproximation in fuse units:\n";
-            std::cout << "  Unit: " << b->to_string() << "\n";
         }
     }
 

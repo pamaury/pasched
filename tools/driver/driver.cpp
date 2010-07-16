@@ -622,6 +622,7 @@ int __main(int argc, char **argv)
     pipeline.add_stage(&statistics);
     pipeline.add_stage(&remover);
     pipeline.add_stage(&accumulator);
+    snd_stage_pipe.add_stage(new pasched::strip_dataless_units);
     snd_stage_pipe.add_stage(new pasched::strip_useless_order_deps);
     snd_stage_pipe.add_stage(new pasched::split_def_use_dom_use_deps);
     snd_stage_pipe.add_stage(new pasched::smart_fuse_two_units(false));
