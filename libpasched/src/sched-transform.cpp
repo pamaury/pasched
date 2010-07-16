@@ -1254,7 +1254,6 @@ void strip_dataless_units::transform(schedule_dag& dag, const scheduler& s, sche
     status.set_modified_graph(stripped.size() > 0);
     status.set_deadlock(false);
     status.set_junction(false);
-    debug_view_dag(dag);
     s.schedule(dag, c);
 
     std::reverse(stripped.begin(), stripped.end());
