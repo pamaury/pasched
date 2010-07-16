@@ -344,8 +344,15 @@ chain_schedule_unit *schedule_dag::fuse_units(const schedule_unit *a,
         std::set< schedule_dep::reg_t > vu_min_vc_min_vdd_min_vd = set_minus(vu_min_vc_min_vdd, vd);
         if(vu_min_vc_min_vdd_min_vd.size() > 0)
         {
+            /*
             debug() << "Overapproximation in fuse units:\n";
+            debug() << "  Unit: " << a->to_string() << "\n";
             debug() << "  Unit: " << b->to_string() << "\n";
+            debug() << "  VC=" << vc << "\n";
+            debug() << "  VU=" << vu << "\n";
+            debug() << "  VD=" << vd << "\n";
+            debug() << "  VDD=" << vdd << "\n";
+            */
             if(simulate_if_approx)
             {
                 delete c;

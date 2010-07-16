@@ -213,14 +213,18 @@ class strip_useless_order_deps : public transformation
 class smart_fuse_two_units : public transformation
 {
     public:
-    smart_fuse_two_units(bool allow_non_optimal_irp_calculation);
+    smart_fuse_two_units(bool allow_non_optimal_irp_calculation,
+                        bool allow_weak_fusing);
     virtual ~smart_fuse_two_units();
 
     virtual void transform(schedule_dag& d, const scheduler& s, schedule_chain& c,
         transformation_status& status) const;
 
     protected:
+    bool weak_fuse(schedule_dag& d, const schedule_unit *a, const schedule_unit *b) const;
+    
     bool m_allow_non_optimal_irp_calculation;
+    bool m_allow_weak_fusing;
 };
 
 /**

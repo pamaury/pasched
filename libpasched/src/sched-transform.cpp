@@ -497,8 +497,10 @@ void strip_useless_order_deps::transform(schedule_dag& dag, const scheduler& s, 
  * smart_fuse_two_units
  */
 
-smart_fuse_two_units::smart_fuse_two_units(bool allow_non_optimal_irp_calculation)
-    :m_allow_non_optimal_irp_calculation(allow_non_optimal_irp_calculation)
+smart_fuse_two_units::smart_fuse_two_units(bool allow_non_optimal_irp_calculation,
+    bool allow_weak)
+    :m_allow_non_optimal_irp_calculation(allow_non_optimal_irp_calculation),
+     m_allow_weak_fusing(allow_weak)
 {
 }
 
@@ -512,12 +514,13 @@ void smart_fuse_two_units::transform(schedule_dag& dag, const scheduler& s, sche
     debug() << "---> smart_fuse_two_units::transform\n";
     /* Do two passes: first don't allow approx and then do so */
     bool allow_approx = false;
+    bool modified = false;
     std::vector< chain_schedule_unit * > fused;
 
     status.begin_transformation();
     
     while(true)
-    {        
+    {
         for(size_t u = 0; u < dag.get_units().size(); u++)
         {
             const schedule_unit *unit = dag.get_units()[u];
@@ -572,6 +575,11 @@ void smart_fuse_two_units::transform(schedule_dag& dag, const scheduler& s, sche
                     unit->internal_register_pressure() <= vc.size())
             {
                 chain_schedule_unit *c = dag.fuse_units(unit, dag.get_succs(unit)[0].to(), !allow_approx);
+                if(c == 0 && m_allow_weak_fusing)
+                {
+                    if(weak_fuse(dag, unit, dag.get_succs(unit)[0].to()))
+                        goto Lgraph_changed;
+                }
                 if(c != 0)
                 {
                     fused.push_back(c);
@@ -586,11 +594,12 @@ void smart_fuse_two_units::transform(schedule_dag& dag, const scheduler& s, sche
             continue;
         }
         break;
+        
         Lgraph_changed:
-        continue;
+        modified = true;
     }
 
-    status.set_modified_graph(fused.size() > 0);
+    status.set_modified_graph(modified);
     status.set_deadlock(false);
     status.set_junction(false);
 
@@ -620,6 +629,25 @@ void smart_fuse_two_units::transform(schedule_dag& dag, const scheduler& s, sche
     status.end_transformation();
 
     debug() << "<--- smart_fuse_two_units::transform\n";
+}
+
+bool smart_fuse_two_units::weak_fuse(schedule_dag& dag, const schedule_unit *a, const schedule_unit *b) const
+{
+    /* For each dep (U,B) add a dep (U,A) */
+    std::vector< schedule_dep > to_add;
+    for(size_t i = 0; i < dag.get_preds(b).size(); i++)
+    {
+        const schedule_unit *unit = dag.get_preds(b)[i].from();
+        if(unit == a)
+            continue;
+        std::set< const schedule_unit * > reach = dag.get_reachable(unit, schedule_dag::rf_follow_succs);
+
+        if(reach.find(a) == reach.end())
+            to_add.push_back(schedule_dep(unit, a, schedule_dep::order_dep));
+    }
+    
+    dag.add_dependencies(to_add);
+    return to_add.size() > 0;
 }
 
 /**

@@ -316,7 +316,7 @@ const pasched::transformation *strip_useless_order_deps()
 
 const pasched::transformation *smart_fuse_two_units(bool aggressive)
 {
-    return new pasched::smart_fuse_two_units(aggressive);
+    return new pasched::smart_fuse_two_units(aggressive, false);
 }
 
 const pasched::transformation *smart_fuse_two_units_conservative()
@@ -625,7 +625,7 @@ int __main(int argc, char **argv)
     snd_stage_pipe.add_stage(new pasched::strip_dataless_units);
     snd_stage_pipe.add_stage(new pasched::strip_useless_order_deps);
     snd_stage_pipe.add_stage(new pasched::split_def_use_dom_use_deps);
-    snd_stage_pipe.add_stage(new pasched::smart_fuse_two_units(false));
+    snd_stage_pipe.add_stage(new pasched::smart_fuse_two_units(false, true));
     snd_stage_pipe.add_stage(new pasched::simplify_order_cuts);
     //snd_stage_pipe.add_stage(new pasched::break_symmetrical_branch_merge);
     snd_stage_pipe.add_stage(new pasched::collapse_chains);

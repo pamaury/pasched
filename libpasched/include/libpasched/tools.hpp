@@ -6,9 +6,43 @@
 #include <functional>
 #include <string>
 #include <set>
+#include <iostream>
 
 namespace PAMAURY_SCHEDULER_NS
 {
+
+template<typename T>
+std::ostream& operator<<(std::ostream& os, const std::set< T >& s)
+{
+    typename std::set< T >::const_iterator it = s.begin();
+    os << "{";
+
+    while(it != s.end())
+    {
+        os << *it;
+        ++it;
+        if(it == s.end())
+            break;
+        os << ", ";
+    }
+    
+    return os << "}";
+}
+
+template<typename T>
+std::ostream& operator<<(std::ostream& os, const std::vector< T >& v)
+{
+    os << "[";
+
+    for(size_t i = 0; i < v.size(); i++)
+    {
+        os << v[i];
+        if((i + 1) != v.size())
+            os << ", ";
+    }
+    
+    return os << "]";
+}
 
 template<typename T, typename U>
 void unordered_vector_remove(U i, std::vector<T>& v)
