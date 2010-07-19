@@ -1,5 +1,7 @@
 #include "sched-chain.hpp"
+#include "sched-dag.hpp"
 #include <stdexcept>
+#include <map>
 
 namespace PAMAURY_SCHEDULER_NS
 {
@@ -13,6 +15,35 @@ schedule_chain::schedule_chain()
 
 schedule_chain::~schedule_chain()
 {
+}
+
+bool schedule_chain::check_against_dag(const schedule_dag& dag) const
+{
+    #if 0
+    #define fail(msg) return false
+    #else
+    #define fail(msg) std::runtime_error(msg)
+    #endif
+    /* trivial check */
+    if(dag.get_units().size() != get_unit_count())
+        fail("schedule_chain::check_against_dag detected a unit count mismatch");
+    /* first build a map of positions */
+    std::map< const schedule_unit *, size_t > pos;
+
+    for(size_t i = 0; i < get_unit_count(); i++)
+        pos[get_unit_at(i)] = i;
+
+    /* then check each dependency is satisfied */
+    for(size_t i = 0; i < dag.get_deps().size(); i++)
+    {
+        const schedule_dep& d = dag.get_deps()[i];
+        if(pos.find(d.from()) == pos.end() ||
+                pos.find(d.to()) == pos.end())
+            fail("schedule_chain::check_against_dag detected unscheduled unit");
+        if(pos[d.from()] >= pos[d.to()])
+            fail("schedule_chain::check_against_dag detected unsatisfied dependency");
+    }
+    return true;
 }
 
 /**

@@ -36,12 +36,13 @@ class basic_list_scheduler : public pasched::scheduler
 class mris_ilp_scheduler : public scheduler
 {
     public:
-    mris_ilp_scheduler();
+    mris_ilp_scheduler(const scheduler *fallback_sched = 0);
     virtual ~mris_ilp_scheduler();
 
     virtual void schedule(schedule_dag& dag, schedule_chain& sc) const;
 
     protected:
+    const scheduler *m_fallback_sched;
 };
 
 }

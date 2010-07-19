@@ -631,10 +631,19 @@ int __main(int argc, char **argv)
     snd_stage_pipe.add_stage(new pasched::collapse_chains);
     snd_stage_pipe.add_stage(new pasched::split_merge_branch_units);
 
-    pasched::basic_list_scheduler sched;
+    pasched::basic_list_scheduler basic_sched;
+    pasched::mris_ilp_scheduler sched(&basic_sched);
     pasched::generic_schedule_chain chain;
     pasched::basic_status status;
+    /* rememember dag for later check */
+    pasched::schedule_dag *dag_copy = dag.dup();
     pipeline.transform(dag, sched, chain, status);
+    /* check chain against dag */
+    bool ok = chain.check_against_dag(*dag_copy);
+    delete dag_copy;
+    if(!ok)
+        throw std::runtime_error("invalid schedule");
+    //debug_view_chain(chain);
     #endif
 
     /*

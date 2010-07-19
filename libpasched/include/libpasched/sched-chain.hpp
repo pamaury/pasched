@@ -12,6 +12,8 @@ namespace PAMAURY_SCHEDULER_NS
  * Represent an actual schedule, that is a list of instruction
  * with a given order
  */
+class schedule_dag;
+
 class schedule_chain
 {
     public:
@@ -29,6 +31,8 @@ class schedule_chain
     virtual void expand_unit_at(size_t pos, const schedule_chain& c) = 0;
     
     virtual void append_unit(const schedule_unit *unit) = 0;
+
+    virtual bool check_against_dag(const schedule_dag& dag) const;
 
     protected:
 };
