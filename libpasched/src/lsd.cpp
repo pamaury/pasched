@@ -27,6 +27,36 @@ const lsd_schedule_unit *lsd_schedule_unit::deep_dup() const
     return dup();
 }
 
+void dump_schedule_dag_to_lsd_file(const schedule_dag& dag, const char *filename)
+{
+    std::ofstream fout(filename);
+
+    if(!fout)
+        throw std::runtime_error("cannot open file '" + std::string(filename) + "' for writing");
+    for(size_t u = 0; u < dag.get_units().size(); u++)
+    {
+        const schedule_unit *unit = dag.get_units()[u];
+        fout << "Unit " << (void *)unit << " Name ";
+        size_t pos = 0;
+        std::string name = unit->to_string();
+        while((pos = name.find('\n', pos)) != std::string::npos)
+        {
+            name.replace(pos, 1, "\\\n");
+            pos += 2;
+        }
+        fout << name << "\n";
+        for(size_t i = 0; i < dag.get_succs(unit).size(); i++)
+        {
+            const schedule_dep& dep = dag.get_succs(unit)[i];
+            fout << "To " << (void *)dep.to() << " Latency 1 Kind ";
+            if(dep.kind() == schedule_dep::data_dep)
+                fout << "data Reg " << dep.reg() << "\n";
+            else if(dep.kind() == schedule_dep::order_dep)
+                fout << "order\n";
+        }
+    }
+}
+
 void build_schedule_dag_from_lsd_file(const char *filename, schedule_dag& dag)
 {
     std::ifstream fin(filename);
@@ -152,5 +182,7 @@ void build_schedule_dag_from_lsd_file(const char *filename, schedule_dag& dag)
             throw std::runtime_error("illformed lsd file: unknown line type ('" + line + "')");
     }
 }
+
+
 
 }

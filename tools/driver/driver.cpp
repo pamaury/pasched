@@ -52,6 +52,11 @@ void dotsvg_write(pasched::schedule_dag& dag, const char *filename)
     remove(name);
 }
 
+void lsd_write(pasched::schedule_dag& dag, const char *filename)
+{
+    pasched::dump_schedule_dag_to_lsd_file(dag, filename);
+}
+
 void null_write(pasched::schedule_dag& dag, const char *filename)
 {
     (void) dag;
@@ -472,7 +477,7 @@ const char *null_ext[] = {0};
 format_t formats[] =
 {
     {"ddl", ddl_ext, "Data Dependency Language file", &ddl_read, 0},
-    {"lsd", ddl_ext, "LLVM Schedule DAG file", &lsd_read, 0},
+    {"lsd", ddl_ext, "LLVM Schedule DAG file", &lsd_read, &lsd_write},
     {"dot", dot_ext, "Graphviz file", 0, &dot_write},
     {"dotsvg", dotsvg_ext, "Graphviz file rendered to SVG", 0, &dotsvg_write},
     {"null", null_ext, "Drop output to the void", 0, &null_write},

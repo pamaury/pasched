@@ -71,6 +71,10 @@ class lsd_schedule_unit : public schedule_unit
  * Build a schedule DAG from a LSD file
  */
 void build_schedule_dag_from_lsd_file(const char *filename, schedule_dag& dag);
+/**
+ * Output a DAG to a LSD file
+ */
+void dump_schedule_dag_to_lsd_file(const schedule_dag& dag, const char *filename);
 
 }
 
