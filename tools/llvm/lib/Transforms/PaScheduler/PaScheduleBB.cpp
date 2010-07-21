@@ -5,6 +5,8 @@
 #include "llvm/Instruction.h"
 #include "llvm/Instructions.h"
 #include "llvm/Operator.h"
+#include "llvm/Analysis/AliasAnalysis.h"
+#include "llvm/Analysis/AliasSetTracker.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
@@ -47,7 +49,7 @@ class LLVMScheduleUnit : public pasched::schedule_unit
         return 0;
     }
 
-    Instruction *GetInstruction() const
+    Instruction *get_instruction() const
     {
         return m_inst;
     }
@@ -56,6 +58,39 @@ class LLVMScheduleUnit : public pasched::schedule_unit
     Instruction *m_inst;
     std::string m_label;
 };
+
+class dag_accumulator : public pasched::transformation
+{
+    public:
+    dag_accumulator() {}
+    virtual ~dag_accumulator() {}
+
+    virtual void transform(pasched::schedule_dag& dag, const pasched::scheduler& s, pasched::schedule_chain& c,
+        pasched::transformation_status& status) const
+    {
+        status.begin_transformation();
+        status.set_modified_graph(false);
+        status.set_junction(false);
+        status.set_deadlock(false);
+        
+        pasched::schedule_dag *d = dag.deep_dup();
+        /* accumulate */
+        m_dag.add_units(d->get_units());
+        m_dag.add_dependencies(d->get_deps());
+        delete d;
+        /* forward */
+        s.schedule(dag, c);
+
+        status.end_transformation();
+    }
+
+    pasched::schedule_dag& get_dag() { return m_dag; }
+
+    protected:
+    /* Little hack here. A transformation is not supposed to keep internal state but here
+     * we want to accumulate DAGs scheduled so we keep a mutable var */
+    mutable pasched::generic_schedule_dag m_dag;
+};
     
 struct PaScheduler : public BasicBlockPass
 {
@@ -63,9 +98,17 @@ struct PaScheduler : public BasicBlockPass
     PaScheduler()
         :BasicBlockPass(&ID) {}
 
+    virtual void getAnalysisUsage(AnalysisUsage& AU) const
+    {
+        AU.addRequired< AliasAnalysis >();
+    }
+
     virtual bool runOnBasicBlock(BasicBlock& BB)
     {
+        AliasAnalysis *AA = &getAnalysis< AliasAnalysis >();
+        AliasSetTracker *AST = new AliasSetTracker(*AA);
         std::map< Instruction *, const LLVMScheduleUnit * > map;
+        std::map< Instruction *, size_t > map_pos;
         std::map< Value *, pasched::schedule_dep::reg_t > reg_map;
         LLVMScheduleUnit *dummy_in = new LLVMScheduleUnit(0, "Dummy IN");
         LLVMScheduleUnit *dummy_out = new LLVMScheduleUnit(0, "Dummy OUT");
@@ -79,10 +122,13 @@ struct PaScheduler : public BasicBlockPass
         dag.add_unit(dummy_in);
         dag.add_unit(dummy_out);
 
+        #if 0
         Instruction *last_mem_inst = 0;
         Instruction *last_throw = 0;
+        #endif
         //dbgs() << "BasicBlock: " << BB.getName() << "\n";
-        for(BasicBlock::iterator DI = BB.begin(); DI != BB.end();)
+        size_t pos = 0;
+        for(BasicBlock::iterator DI = BB.begin(); DI != BB.end(); pos++)
         {
             Instruction *inst = DI++;
             if(isa<PHINode>(inst))
@@ -92,6 +138,7 @@ struct PaScheduler : public BasicBlockPass
             os.SetUnbuffered();
             os << *inst;
             map[inst] = new LLVMScheduleUnit(inst, oss.str());
+            map_pos[inst] = pos;
             dag.add_unit(map[inst]);
             /* add deps to schedule before dummies */
             dag.add_dependency(
@@ -149,6 +196,7 @@ struct PaScheduler : public BasicBlockPass
                     }
                 }
             }
+            /* terminator */
             TerminatorInst *terminator = dyn_cast< TerminatorInst >(inst);
             if(terminator)
             {
@@ -165,6 +213,7 @@ struct PaScheduler : public BasicBlockPass
                             pasched::schedule_dep::order_dep));
                 }
             }
+            #if 0
             /* check for memory operations */
             if(inst->mayReadFromMemory() || inst->mayWriteToMemory())
             {
@@ -205,6 +254,7 @@ struct PaScheduler : public BasicBlockPass
                 }
                 last_throw = inst;
             }
+            #endif
             /*
             dbgs() << "  " << inst << ":  " << *inst;
             User *user = dyn_cast< User >(inst);
@@ -219,7 +269,119 @@ struct PaScheduler : public BasicBlockPass
             */
         }
 
-        debug_view_dag(dag);
+        for(BasicBlock::iterator DI = BB.begin(); DI != BB.end();)
+        {
+            Instruction *inst = DI++;
+            if(isa<PHINode>(inst))
+                continue;
+            AST->add(inst);
+        }
+
+        for(AliasSetTracker::iterator it = AST->begin(); it != AST->end(); ++it)
+        {
+            AliasSet& AS = *it;
+            if(AS.isForwardingAliasSet())
+                continue;
+            //dbgs() << "AliasSet:\n";
+            std::vector< Instruction * > list;
+            for(AliasSet::iterator it2 = AS.begin(); it2 != AS.end(); ++it2)
+            {
+                //dbgs() << "  -- " << *it2.getPointer();
+                for(BasicBlock::iterator DI = BB.begin(); DI != BB.end();)
+                {
+                    Instruction *inst = DI++;
+                    if(isa<PHINode>(inst))
+                        continue;
+                    User *user = dyn_cast< User >(inst);
+                    if(!user)
+                        continue;
+                    for(unsigned i = 0; i < user->getNumOperands(); i++)
+                        if(user->getOperand(i) == it2.getPointer())
+                            list.push_back(inst);
+                }
+            }
+            /*
+            dbgs() << "  Instructions:\n";
+            for(size_t i = 0; i < list.size(); i++)
+                dbgs() << *list[i] << "\n";
+            */
+            Instruction *last = 0;
+            while(list.size())
+            {
+                size_t min_pos = 0;
+                for(size_t i = 1; i < list.size(); i++)
+                    if(map_pos[list[i]] < map_pos[list[min_pos]])
+                        min_pos = i;
+                if(last)
+                    dag.add_dependency(
+                        pasched::schedule_dep(
+                            map[last],
+                            map[list[min_pos]],
+                            pasched::schedule_dep::order_dep));
+                last = list[min_pos];
+                pasched::unordered_vector_remove(min_pos, list);
+            }
+        }
+
+        pasched::transformation_pipeline pipeline;
+        pasched::transformation_pipeline snd_stage_pipe;
+        pasched::transformation_loop loop(&snd_stage_pipe);
+        dag_accumulator accum;
+        pipeline.add_stage(new pasched::unique_reg_ids);
+        pipeline.add_stage(&loop);
+        pipeline.add_stage(&accum);
+        snd_stage_pipe.add_stage(new pasched::strip_dataless_units);
+        snd_stage_pipe.add_stage(new pasched::strip_useless_order_deps);
+        snd_stage_pipe.add_stage(new pasched::split_def_use_dom_use_deps);
+        snd_stage_pipe.add_stage(new pasched::smart_fuse_two_units(false, true));
+        snd_stage_pipe.add_stage(new pasched::simplify_order_cuts);
+        //snd_stage_pipe.add_stage(new pasched::break_symmetrical_branch_merge);
+        snd_stage_pipe.add_stage(new pasched::collapse_chains);
+        snd_stage_pipe.add_stage(new pasched::split_merge_branch_units);
+
+        #if 1
+        pasched::basic_list_scheduler basic_sched;
+        pasched::mris_ilp_scheduler sched(&basic_sched, 2000);
+        #else
+        pasched::basic_list_scheduler sched;
+        #endif
+        pasched::generic_schedule_chain chain;
+        pasched::basic_status status;
+        /* rememember dag for later check */
+        pasched::schedule_dag *dag_copy = dag.dup();
+        pipeline.transform(dag, sched, chain, status);
+        //debug_view_dag(*dag_copy);
+        debug_view_dag(accum.get_dag());
+        debug_view_chain(chain);
+        //dump_schedule_dag_to_lsd_file(*dag_copy, "dag.lsd");
+        /* check chain against dag */
+        bool ok = chain.check_against_dag(*dag_copy);
+        delete dag_copy;
+        assert(ok && "Invalid schedule (DAG failure)");
+        /* other sanity checks */
+        assert(chain.get_unit_at(0) == dummy_in && "Invalid schedule (IN failure)");
+        assert(chain.get_unit_at(chain.get_unit_count() - 1) == dummy_out && "Invalid schedule (OUT failure)");
+        assert(chain.get_unit_at(chain.get_unit_count() - 2) == map[BB.getTerminator()]  && "Invalid schedule (terminator failure)");
+        /* reorder in the BB */
+        for(size_t i = 1; i < (chain.get_unit_count() - 2); i++)
+        {
+            const LLVMScheduleUnit *unit = static_cast< const LLVMScheduleUnit *>(chain.get_unit_at(i));
+            unit->get_instruction()->removeFromParent();
+        }
+        for(size_t i = 1; i < (chain.get_unit_count() - 2); i++)
+        {
+            const LLVMScheduleUnit *unit = static_cast< const LLVMScheduleUnit *>(chain.get_unit_at(i));
+            unit->get_instruction()->insertBefore(BB.getTerminator());
+        }
+
+        /*
+        dbgs() << BB;
+        
+        for(size_t i = 0; i < chain.get_unit_count(); i++)
+            dbgs() << chain.get_unit_at(i)->to_string() << "\n";
+        */
+        
+        AST->clear();
         
         return true;
     }

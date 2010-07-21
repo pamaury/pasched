@@ -21,8 +21,8 @@
 namespace PAMAURY_SCHEDULER_NS
 {
 
-mris_ilp_scheduler::mris_ilp_scheduler(const scheduler *fallback)
-    :m_fallback_sched(fallback)
+mris_ilp_scheduler::mris_ilp_scheduler(const scheduler *fallback, size_t fallback_timeout)
+    :m_fallback_sched(fallback), m_timeout(fallback_timeout)
 {
 }
 
@@ -446,18 +446,34 @@ void mris_ilp_scheduler::schedule(schedule_dag& dag, schedule_chain& sc) const
         {
             // z >= rp(u)
             // <=> z - rp(u) >= 0
-            int row = glp_add_rows(p, 1);
+            {
+                int row = glp_add_rows(p, 1);
 
-            sprintf(name, "(5)(%u)", u);
-            glp_set_row_name(p, row, name);
-            glp_set_row_bnds(p, row, GLP_LO, 0, 0);
-            int idx[3];
-            idx[1] = z_col;
-            idx[2] = rp_u_col[u];
-            double val[3];
-            val[1] = 1.0;
-            val[2] = -1.0;
-            glp_set_mat_row(p, row, 2, idx, val);
+                sprintf(name, "(5)(%u)", u);
+                glp_set_row_name(p, row, name);
+                glp_set_row_bnds(p, row, GLP_LO, 0, 0);
+                int idx[3];
+                idx[1] = z_col;
+                idx[2] = rp_u_col[u];
+                double val[3];
+                val[1] = 1.0;
+                val[2] = -1.0;
+                glp_set_mat_row(p, row, 2, idx, val);
+            }
+            
+            // z >= irp(u)
+            {
+                int row = glp_add_rows(p, 1);
+                
+                sprintf(name, "(6)(%u)", u);
+                glp_set_row_name(p, row, name);
+                glp_set_row_bnds(p, row, GLP_LO, units[u]->internal_register_pressure(), 0);
+                int idx[2];
+                idx[1] = z_col;
+                double val[2];
+                val[1] = 1.0;
+                glp_set_mat_row(p, row, 2, idx, val);
+            }
         }
         #ifdef POST_GEN_OPT
         // add post generation additional constraint to speedup
@@ -492,14 +508,13 @@ void mris_ilp_scheduler::schedule(schedule_dag& dag, schedule_chain& sc) const
         glp_iocp cp;
         glp_init_iocp(&cp);
         cp.presolve = GLP_ON;
-        /*
         cp.gmi_cuts = GLP_ON;
         cp.mir_cuts = GLP_ON;
         cp.cov_cuts = GLP_ON;
         cp.clq_cuts = GLP_ON;
-        */
         cp.msg_lev = GLP_MSG_OFF;
-        cp.tm_lim = 1000;
+        if(m_timeout)
+            cp.tm_lim = m_timeout;
 
         int sts = glp_intopt(p, &cp);
         if(sts != 0)
