@@ -21,8 +21,8 @@
 namespace PAMAURY_SCHEDULER_NS
 {
 
-mris_ilp_scheduler::mris_ilp_scheduler(const scheduler *fallback, size_t fallback_timeout)
-    :m_fallback_sched(fallback), m_timeout(fallback_timeout)
+mris_ilp_scheduler::mris_ilp_scheduler(const scheduler *fallback, size_t fallback_timeout, bool verbose)
+    :m_fallback_sched(fallback), m_timeout(fallback_timeout), m_verbose(verbose)
 {
 }
 
@@ -502,8 +502,26 @@ void mris_ilp_scheduler::schedule(schedule_dag& dag, schedule_chain& sc) const
         }
         #endif
 
-        //glp_write_lp(p, 0, "test.lp");
-        glp_term_out(GLP_OFF);
+        glp_write_lp(p, 0, "test.lp");
+        glp_term_out(m_verbose ? GLP_ON : GLP_OFF);
+
+        /*
+        glp_iptcp pre_cp;
+        glp_init_iptcp(&pre_cp);
+        pre_cp.msg_lev = m_verbose ? GLP_MSG_ALL : GLP_MSG_OFF;
+        pre_cp.ord_alg = GLP_ORD_NONE;
+
+        int sts = glp_interior(p, &pre_cp);
+        if(sts != 0)
+            ILP_ERROR("LP relaxation solver error !");
+        switch(glp_ipt_status(p))
+        {
+            case GLP_UNDEF: ILP_ERROR("LP relaxation solution is undefined !");
+            case GLP_NOFEAS: ILP_ERROR("LP relaxation has no solution !");
+            case GLP_INFEAS: ILP_ERROR("LP relaxation cannot be solved using interior point !");
+            default: break;
+        }
+        */
 
         glp_iocp cp;
         glp_init_iocp(&cp);
@@ -512,7 +530,7 @@ void mris_ilp_scheduler::schedule(schedule_dag& dag, schedule_chain& sc) const
         cp.mir_cuts = GLP_ON;
         cp.cov_cuts = GLP_ON;
         cp.clq_cuts = GLP_ON;
-        cp.msg_lev = GLP_MSG_OFF;
+        cp.msg_lev = m_verbose ? GLP_MSG_ALL : GLP_MSG_OFF;
         if(m_timeout)
             cp.tm_lim = m_timeout;
 

@@ -37,7 +37,7 @@ class mris_ilp_scheduler : public scheduler
 {
     public:
     /* Timeout in ms, 0 for no timeout */
-    mris_ilp_scheduler(const scheduler *fallback_sched = 0, size_t fallback_timeout = 0);
+    mris_ilp_scheduler(const scheduler *fallback_sched = 0, size_t fallback_timeout = 0, bool verbose = false);
     virtual ~mris_ilp_scheduler();
 
     virtual void schedule(schedule_dag& dag, schedule_chain& sc) const;
@@ -45,6 +45,7 @@ class mris_ilp_scheduler : public scheduler
     protected:
     const scheduler *m_fallback_sched;
     size_t m_timeout;
+    bool m_verbose;
 };
 
 }
