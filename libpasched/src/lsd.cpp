@@ -27,12 +27,8 @@ const lsd_schedule_unit *lsd_schedule_unit::deep_dup() const
     return dup();
 }
 
-void dump_schedule_dag_to_lsd_file(const schedule_dag& dag, const char *filename)
+void dump_schedule_dag_to_lsd_stream(const schedule_dag& dag, std::ostream& fout)
 {
-    std::ofstream fout(filename);
-
-    if(!fout)
-        throw std::runtime_error("cannot open file '" + std::string(filename) + "' for writing");
     for(size_t u = 0; u < dag.get_units().size(); u++)
     {
         const schedule_unit *unit = dag.get_units()[u];
@@ -57,13 +53,16 @@ void dump_schedule_dag_to_lsd_file(const schedule_dag& dag, const char *filename
     }
 }
 
-void build_schedule_dag_from_lsd_file(const char *filename, schedule_dag& dag)
+void dump_schedule_dag_to_lsd_file(const schedule_dag& dag, const char *filename)
 {
-    std::ifstream fin(filename);
+    std::ofstream fout(filename);
+    if(!fout)
+        throw std::runtime_error("cannot open file '" + std::string(filename) + "' for writing");
+    dump_schedule_dag_to_lsd_stream(dag, fout);
+}
 
-    if(!fin)
-        throw std::runtime_error("cannot open file '" + std::string(filename) + "' for reading");
-
+void build_schedule_dag_from_lsd_stream(std::istream& fin, schedule_dag& dag)
+{
     std::vector< lsd_schedule_unit * > units;
     std::map< std::string, int > name_map;
     int current_unit = -1;
@@ -183,6 +182,13 @@ void build_schedule_dag_from_lsd_file(const char *filename, schedule_dag& dag)
     }
 }
 
+void build_schedule_dag_from_lsd_file(const char *filename, schedule_dag& dag)
+{
+    std::ifstream fin(filename);
 
+    if(!fin)
+        throw std::runtime_error("cannot open file '" + std::string(filename) + "' for reading");
+    build_schedule_dag_from_lsd_stream(fin, dag);
+}
 
 }
