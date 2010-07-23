@@ -273,6 +273,22 @@ class split_def_use_dom_use_deps : public transformation
 /**
  *
  */
+class split_def_use_dom_use_partial : public transformation
+{
+    public:
+    split_def_use_dom_use_partial(bool generate_unique_reg_id = true);
+    virtual ~split_def_use_dom_use_partial();
+
+    virtual void transform(schedule_dag& d, const scheduler& s, schedule_chain& c,
+        transformation_status& status) const;
+
+    protected:
+    bool m_generate_new_reg_ids;
+};
+
+/**
+ *
+ */
 class break_symmetrical_branch_merge : public transformation
 {
     public:
