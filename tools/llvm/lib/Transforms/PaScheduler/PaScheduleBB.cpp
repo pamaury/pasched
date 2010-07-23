@@ -296,7 +296,9 @@ struct PaScheduler : public BasicBlockPass
                     if(!user)
                         continue;
                     for(unsigned i = 0; i < user->getNumOperands(); i++)
-                        if(user->getOperand(i) == it2.getPointer())
+                        /* avoid putting the same instruction twice ! */
+                        if(user->getOperand(i) == it2.getPointer() &&
+                                !pasched::container_contains(list, inst))
                             list.push_back(inst);
                 }
             }
@@ -309,7 +311,7 @@ struct PaScheduler : public BasicBlockPass
             while(list.size())
             {
                 size_t min_pos = 0;
-                for(size_t i = 1; i < list.size(); i++)
+                for(size_t i = 0; i < list.size(); i++)
                     if(map_pos[list[i]] < map_pos[list[min_pos]])
                         min_pos = i;
                 if(last)
@@ -322,6 +324,13 @@ struct PaScheduler : public BasicBlockPass
                 pasched::unordered_vector_remove(min_pos, list);
             }
         }
+
+        /* Before scheduling, remove redundant data deps
+         * There could be some in the case of such sequence:
+         * %0 = ....
+         * %1 = mult int32 %0, %0
+         */
+        dag.remove_redundant_data_deps();
 
         pasched::transformation_pipeline pipeline;
         pasched::transformation_pipeline snd_stage_pipe;
@@ -339,9 +348,9 @@ struct PaScheduler : public BasicBlockPass
         snd_stage_pipe.add_stage(new pasched::collapse_chains);
         snd_stage_pipe.add_stage(new pasched::split_merge_branch_units);
 
-        #if 1
+        #if 0
         pasched::basic_list_scheduler basic_sched;
-        pasched::mris_ilp_scheduler sched(&basic_sched, 2000);
+        pasched::mris_ilp_scheduler sched(&basic_sched, 250);
         #else
         pasched::basic_list_scheduler sched;
         #endif
@@ -349,10 +358,15 @@ struct PaScheduler : public BasicBlockPass
         pasched::basic_status status;
         /* rememember dag for later check */
         pasched::schedule_dag *dag_copy = dag.dup();
+        std::ostringstream oss;
+        dump_schedule_dag_to_lsd_stream(dag, oss);
+        dbgs() << "**** Schedule DAG ****\n";
+        dbgs() << oss.str();
+        //debug_view_dag(dag);
         pipeline.transform(dag, sched, chain, status);
         //debug_view_dag(*dag_copy);
-        debug_view_dag(accum.get_dag());
-        debug_view_chain(chain);
+        //debug_view_dag(accum.get_dag());
+        //debug_view_chain(chain);
         //dump_schedule_dag_to_lsd_file(*dag_copy, "dag.lsd");
         /* check chain against dag */
         bool ok = chain.check_against_dag(*dag_copy);
