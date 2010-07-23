@@ -11,11 +11,11 @@ namespace
 {
     std::string escape_label(const std::string& s)
     {
-        if(s.find('\n') == std::string::npos)
-            return s;
+        bool multilines = s.find('\n') != std::string::npos;
         std::ostringstream oss;
 
-        oss << "{";
+        if(multilines)
+            oss << "{";
 
         for(size_t i = 0; i < s.size(); i++)
         {
@@ -30,11 +30,13 @@ namespace
                 case '|': oss << "\\|"; break;
                 case '{': oss << "\\{"; break;
                 case '}': oss << "\\}"; break;
+                case '"': oss << "\\\""; break;
                 default: oss << s[i]; break;
             }
         }
 
-        oss << "}";
+        if(multilines)
+            oss << "}";
         return oss.str();
     }
 

@@ -7,8 +7,8 @@
 namespace PAMAURY_SCHEDULER_NS
 {
 
-void debug_view_chain(const schedule_chain& dag,
-    const std::vector< dag_printer_opt >& opts = std::vector< dag_printer_opt >());
+void debug_view_chain(const schedule_chain& dag);
+void debug_view_chain(const schedule_chain& dag, const std::vector< dag_printer_opt >& opts);
 
 /**
  * Debug function which prints and render a DAG and display it in a window.
@@ -16,8 +16,9 @@ void debug_view_chain(const schedule_chain& dag,
  *
  * NOTE: this might not be available on all platforms and in all builds.
  */
-void debug_view_dag(const schedule_dag& dag,
-    const std::vector< dag_printer_opt >& opts = std::vector< dag_printer_opt >());
+void debug_view_dag(const schedule_dag& dag);
+void debug_view_dag(const schedule_dag& dag, const std::vector< dag_printer_opt >& opts);
+
 
 }
 

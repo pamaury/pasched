@@ -142,6 +142,14 @@ class schedule_dag
      */
     virtual void collapse_subgraph(const std::set< const schedule_unit * >& units,
         const schedule_unit *new_unit);
+
+    /**
+     * Check all the predecessors dep of a node for data redundancies
+     * and delete them. Similary for successors and for the whole graph.
+     */
+    virtual void remove_redundant_data_dep_preds(const schedule_unit *unit);
+    virtual void remove_redundant_data_dep_succs(const schedule_unit *unit);
+    virtual void remove_redundant_data_deps();
 };
 
 /**

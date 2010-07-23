@@ -387,6 +387,9 @@ chain_schedule_unit *schedule_dag::fuse_units(const schedule_unit *a,
     remove_unit(b);
     add_dependencies(to_add);
 
+    /* remove redundant data deps */
+    remove_redundant_data_dep_preds(c);
+
     return c;
 }
 
@@ -445,6 +448,65 @@ void schedule_dag::collapse_subgraph(const std::set< const schedule_unit * >& su
 schedule_dep::reg_t schedule_dag::generate_unique_reg_id() const
 {
     return schedule_dep::generate_unique_reg_id();
+}
+
+void schedule_dag::remove_redundant_data_dep_preds(const schedule_unit *unit)
+{
+    std::vector< schedule_dep > to_remove;
+    
+    for(size_t i = 0; i < get_preds(unit).size(); i++)
+    {
+        const schedule_dep& dep = get_preds(unit)[i];
+        if(dep.kind() != schedule_dep::data_dep)
+            continue;
+        for(size_t j = i + 1; j < get_preds(unit).size(); j++)
+        {
+            const schedule_dep& dep2 = get_preds(unit)[j];
+            if(dep2.kind() != schedule_dep::data_dep)
+                continue;
+            if(dep.reg() != dep2.reg())
+                continue;
+            if(dep.from() != dep2.from())
+                throw std::runtime_error("schedule_dep::remove_redundant_data_dep_preds detected several creators for the same register");
+            to_remove.push_back(dep2);
+            /* stop now because otherwise, we will remove some twice or more ! */
+            break;
+        }
+    }
+
+    remove_dependencies(to_remove);
+}
+
+void schedule_dag::remove_redundant_data_dep_succs(const schedule_unit *unit)
+{
+    std::vector< schedule_dep > to_remove;
+    
+    for(size_t i = 0; i < get_succs(unit).size(); i++)
+    {
+        const schedule_dep& dep = get_succs(unit)[i];
+        if(dep.kind() != schedule_dep::data_dep)
+            continue;
+        for(size_t j = i + 1; j < get_succs(unit).size(); j++)
+        {
+            const schedule_dep& dep2 = get_succs(unit)[j];
+            if(dep2.kind() != schedule_dep::data_dep)
+                continue;
+            if(dep.reg() == dep2.reg() && dep.to() == dep2.to())
+            {
+                to_remove.push_back(dep2);
+                /* stop now because otherwise, we will remove some twice or more ! */
+                break;
+            }
+        }
+    }
+
+    remove_dependencies(to_remove);
+}
+
+void schedule_dag::remove_redundant_data_deps()
+{
+    for(size_t u = 0; u < get_units().size(); u++)
+        remove_redundant_data_dep_succs(get_units()[u]);
 }
 
 /**

@@ -20,6 +20,11 @@ void debug_view_dag(const schedule_dag& dag,
     remove(svg_name.c_str());
 }
 
+void debug_view_dag(const schedule_dag& dag)
+{
+    debug_view_dag(dag, std::vector< dag_printer_opt >());
+}
+
 void debug_view_chain(const schedule_chain& chain,
     const std::vector< dag_printer_opt >& opts)
 {
@@ -38,6 +43,11 @@ void debug_view_chain(const schedule_chain& chain,
     }
 
     debug_view_dag(dag, opts);
+}
+
+void debug_view_chain(const schedule_chain& c)
+{
+    debug_view_chain(c, std::vector< dag_printer_opt >());
 }
 
 }
