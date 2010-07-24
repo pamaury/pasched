@@ -1,6 +1,7 @@
 #include "scheduler.hpp"
 #include "tools.hpp"
 #include <glpk.h>
+#include <coin/symphony.h>
 #include <cstdlib>
 #include <cstdio>
 #include <stdexcept>
@@ -8,6 +9,7 @@
 #include <queue>
 #include <iostream>
 
+#define SOLVE_WITH_SYMPHONY
 //#define DEBUG_ILP_CREATION
 
 //#define USE_FU
@@ -503,6 +505,9 @@ void mris_ilp_scheduler::schedule(schedule_dag& dag, schedule_chain& sc) const
         #endif
 
         glp_write_lp(p, 0, "test.lp");
+        glp_write_mps(p, GLP_MPS_FILE, 0, "test.mps");
+
+        #ifdef SOLVE_WITH_GLPK
         glp_term_out(m_verbose ? GLP_ON : GLP_OFF);
 
         /*
@@ -539,10 +544,28 @@ void mris_ilp_scheduler::schedule(schedule_dag& dag, schedule_chain& sc) const
             ILP_ERROR("ILP solver error !");
         switch(glp_mip_status(p))
         {
-            case GLP_UNDEF: ILP_ERROR("ILP solution is undefined !");
-            case GLP_NOFEAS: ILP_ERROR("ILP has no solution !");
-            default: break;
+            case GLP_OPT: break;
+            default: ILP_ERROR("ILP no solution found or no solution !");
         }
+
+        #elif defined(SOLVE_WITH_SYMPHONY)
+        sym_environment *env = sym_open_environment();
+        if(env == NULL)
+            ILP_ERROR("Cannot init SYMPHONY library !");
+        if(sym_set_defaults(env) != FUNCTION_TERMINATED_NORMALLY)
+            ILP_ERROR("Cannot set default parameters for SYMPHOMY !");
+        if(sym_read_mps(env, "test.mps") != FUNCTION_TERMINATED_NORMALLY)
+            ILP_ERROR("Cannot load MPS file in SYMPHOMY !");
+        int ret = sym_solve(env);
+        switch(ret)
+        {
+            case TM_OPTIMAL_SOLUTION_FOUND: break;
+            default: ILP_ERROR("ILP solver error !");
+        }
+        sym_close_environment(env);
+        #else
+        #error You need to specify a solve !
+        #endif
 
         //glp_print_mip(p, "test.sol");
 
