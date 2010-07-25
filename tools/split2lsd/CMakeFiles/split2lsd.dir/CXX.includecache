@@ -1,0 +1,18 @@
+#IncludeRegexLine: ^[ 	]*#[ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/local/pouly/home/pasched/tools/split2lsd/split2lsd.cpp
+fstream
+-
+string
+-
+iostream
+-
+sstream
+-
+

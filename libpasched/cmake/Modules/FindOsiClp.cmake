@@ -1,0 +1,7 @@
+find_library(OSI_CLP_LIBRARY OsiClp)
+set(OSI_CLP_FOUND "NO")
+set(OSI_CLP_INCLUDE_DIR "")
+
+if(OSI_CLP_LIBRARY)
+    set(OSI_CLP_FOUND "YES")
+endif(OSI_CLP_LIBRARY)

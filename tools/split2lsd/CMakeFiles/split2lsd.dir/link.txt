@@ -1,0 +1,1 @@
+/usr/bin/c++      CMakeFiles/split2lsd.dir/split2lsd.cpp.o  -o split2lsd -rdynamic /local/pouly/lib/libpasched.so -Wl,-rpath,/local/pouly/lib 
