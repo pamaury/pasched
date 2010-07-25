@@ -3,6 +3,6 @@
 
 #define PAMAURY_SCHEDULER_NS    pasched
 
-/* #undef HAS_SYMHPONY */
+#cmakedefine HAS_SYMHPONY
 
 #endif // __PAMAURY_CONFIG_HPP__
