@@ -1,7 +1,9 @@
 #include "scheduler.hpp"
 #include "tools.hpp"
 #include <glpk.h>
+#ifdef HAS_SYMPHONY
 #include <coin/symphony.h>
+#endif /* HAS_SYMPHONY */
 #include <cstdlib>
 #include <cstdio>
 #include <stdexcept>
@@ -9,7 +11,13 @@
 #include <queue>
 #include <iostream>
 
-#define SOLVE_WITH_SYMPHONY
+#ifdef HAS_SYMPHONY
+/* #define SOLVE_WITH_SYMPHONY */
+#define SOLVE_WITH_GLPK
+#else
+#define SOLVE_WITH_GLPK
+#endif
+
 //#define DEBUG_ILP_CREATION
 
 //#define USE_FU

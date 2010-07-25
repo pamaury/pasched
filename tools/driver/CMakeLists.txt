@@ -7,7 +7,6 @@ if(NOT PASCHED_FOUND)
     message(SEND_ERROR "You need libpasched to compile this program")
 endif(NOT PASCHED_FOUND)
 
-add_definitions(-g -pedantic -W -Wall)
 include_directories(${PASCHED_INCLUDE_DIR})
 
 add_executable(driver driver.cpp)
