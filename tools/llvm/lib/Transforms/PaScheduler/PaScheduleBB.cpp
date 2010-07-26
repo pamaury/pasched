@@ -339,6 +339,7 @@ struct PaScheduler : public BasicBlockPass
         pipeline.add_stage(new pasched::unique_reg_ids);
         pipeline.add_stage(&loop);
         pipeline.add_stage(&accum);
+        /*
         snd_stage_pipe.add_stage(new pasched::strip_dataless_units);
         snd_stage_pipe.add_stage(new pasched::strip_useless_order_deps);
         snd_stage_pipe.add_stage(new pasched::split_def_use_dom_use_deps);
@@ -347,21 +348,24 @@ struct PaScheduler : public BasicBlockPass
         //snd_stage_pipe.add_stage(new pasched::break_symmetrical_branch_merge);
         snd_stage_pipe.add_stage(new pasched::collapse_chains);
         snd_stage_pipe.add_stage(new pasched::split_merge_branch_units);
+        */
 
         #if 0
-        pasched::basic_list_scheduler basic_sched;
+        pasched::simple_rp_scheduler basic_sched;
         pasched::mris_ilp_scheduler sched(&basic_sched, 250);
         #else
-        pasched::basic_list_scheduler sched;
+        pasched::simple_rp_scheduler sched;
         #endif
         pasched::generic_schedule_chain chain;
         pasched::basic_status status;
         /* rememember dag for later check */
         pasched::schedule_dag *dag_copy = dag.dup();
+        /*
         std::ostringstream oss;
         dump_schedule_dag_to_lsd_stream(dag, oss);
         dbgs() << "**** Schedule DAG ****\n";
         dbgs() << oss.str();
+        */
         //debug_view_dag(dag);
         pipeline.transform(dag, sched, chain, status);
         //debug_view_dag(*dag_copy);

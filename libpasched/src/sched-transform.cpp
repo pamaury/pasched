@@ -1101,6 +1101,8 @@ void split_def_use_dom_use_partial::transform(schedule_dag& dag, const scheduler
                             new_dep.set_to(dom);
                             schedule_dep other_dep = reg_use[v];
                             other_dep.set_from(dom);
+                            if(m_generate_new_reg_ids)
+                                other_dep.set_reg(dag.generate_unique_reg_id());
 
                             dag.remove_dependency(reg_use[v]);
                             dag.add_dependency(new_dep);
