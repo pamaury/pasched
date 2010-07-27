@@ -4,5 +4,9 @@
 #define PAMAURY_SCHEDULER_NS    pasched
 
 #cmakedefine HAS_SYMHPONY
+#cmakedefine ENABLE_DAG_AUTO_CHECK_CONSISTENCY
+#cmakedefine ENABLE_SCHED_AUTO_CHECK_RP
+#cmakedefine ENABLE_XFORM_AUTO_CHECK_RP
+#cmakedefine ENABLE_XFORM_TIME_STAT
 
 #endif // __PAMAURY_CONFIG_HPP__

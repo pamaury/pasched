@@ -10,6 +10,7 @@
 #include <set>
 #include <queue>
 #include <iostream>
+#include <cassert>
 
 #ifdef HAS_SYMPHONY
 /* #define SOLVE_WITH_SYMPHONY */
@@ -619,14 +620,16 @@ void mris_ilp_scheduler::schedule(schedule_dag& dag, schedule_chain& sc) const
         for(unsigned u = 0; u < n; u++)
             sc.append_unit(units[placement[u]]);
 
-        if(true)
+        #ifdef ENABLE_SCHED_AUTO_CHECK_RP
         {
-            std::cout << "RP=" << glp_mip_obj_val(p) << "\n";
             generic_schedule_chain gsc;
             for(unsigned u = 0; u < n; u++)
                 gsc.append_unit(units[placement[u]]);
-            std::cout << "  vs RP=" << gsc.compute_rp_against_dag(dag) << "\n";
+
+            assert(glp_mip_obj_val(p) == gsc.compute_rp_against_dag(dag) &&
+                    "Mismatch between announced and actual RP in mris_ilp_scheduler");
         }
+        #endif
         
         glp_delete_prob(p);
         return;

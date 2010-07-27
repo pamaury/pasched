@@ -649,6 +649,7 @@ int __main(int argc, char **argv)
     #else
     pasched::simple_rp_scheduler sched;
     #endif
+    
     pasched::generic_schedule_chain chain;
     pasched::basic_status status;
     /* rememember dag for later check */
@@ -656,10 +657,25 @@ int __main(int argc, char **argv)
     pipeline.transform(dag, sched, chain, status);
     /* check chain against dag */
     bool ok = chain.check_against_dag(*dag_copy);
-    delete dag_copy;
     if(!ok)
         throw std::runtime_error("invalid schedule");
+    std::cout << "RP=" << chain.compute_rp_against_dag(*dag_copy) << "\n";
+    delete dag_copy;
     //debug_view_chain(chain);
+    #endif
+
+    #if 1
+    if(pasched::time_stat::get_time_stat_count() != 0)
+    {
+        std::cout << "Time statistics:\n";
+        for(size_t i = 0; i < pasched::time_stat::get_time_stat_count(); i++)
+        {
+            pasched::time_stat *ts = pasched::time_stat::get_time_stat_by_index(i);
+            std::cout << "  " << ts->get_name() << ": " <<
+                (float)ts->get_timer().get_value() / (float)ts->get_timer().get_hz() << " sec\n";
+        }
+    }
+    
     #endif
 
     /*

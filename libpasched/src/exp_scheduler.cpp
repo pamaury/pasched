@@ -338,14 +338,15 @@ void exp_scheduler::schedule(schedule_dag& dag, schedule_chain& sc) const
         for(size_t i = 0; i < st.best_schedule.size(); i++)
             sc.append_unit(dag.get_units()[st.best_schedule[i]]);
 
-        if(true)
+        #ifdef ENABLE_SCHED_AUTO_CHECK_RP
         {
-            std::cout << "RP=" << st.best_rp << "\n";
             generic_schedule_chain gsc;
             for(size_t i = 0; i < st.best_schedule.size(); i++)
                 gsc.append_unit(dag.get_units()[st.best_schedule[i]]);
-            std::cout << "  vs RP=" << gsc.compute_rp_against_dag(dag) << "\n";
+
+            assert(st.best_rp == gsc.compute_rp_against_dag(dag) && "Mismatch between announced and actual RP in exp_scheduler");
         }
+        #endif
     }
     else
     {

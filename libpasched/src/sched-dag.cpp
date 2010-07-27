@@ -5,7 +5,9 @@
 #include <queue>
 #include <iostream>
 
-//#define AUTO_CHECK_CONSISTENCY
+#ifdef ENABLE_DAG_AUTO_CHECK_CONSISTENCY
+#define AUTO_CHECK_CONSISTENCY
+#endif
 
 namespace PAMAURY_SCHEDULER_NS
 {

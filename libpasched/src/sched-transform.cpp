@@ -1,11 +1,22 @@
 #include <sched-transform.hpp>
 #include <tools.hpp>
+#include <time-tools.hpp>
 #include <sched-dag-viewer.hpp>
 #include <sstream>
 #include <stdexcept>
 #include <cassert>
 #include <algorithm>
 #include <iostream>
+
+#ifdef ENABLE_XFORM_TIME_STAT
+#define XTM_STAT(a) a
+#else
+#define XTM_STAT(a)
+#endif
+
+#define XTM_DECLARE(name) XTM_STAT(namespace { time_stat xtm_##name("xtm-" #name); })
+#define XTM_START(name) XTM_STAT(xtm_##name.get_timer().start();)
+#define XTM_STOP(name) XTM_STAT(xtm_##name.get_timer().stop();)
 
 #if 0
 namespace PAMAURY_SCHEDULER_NS
@@ -382,6 +393,7 @@ void transformation_loop::transform(schedule_dag& d, const scheduler& s, schedul
 /**
  * unique_reg_ids
  */
+XTM_DECLARE(unique_reg_ids)
 
 unique_reg_ids::unique_reg_ids()
 {
@@ -401,6 +413,8 @@ void unique_reg_ids::transform(schedule_dag& dag, const scheduler& s, schedule_c
     std::vector< schedule_dep > to_add;
 
     status.begin_transformation();
+
+    XTM_START(unique_reg_ids)
     
     for(size_t u = 0; u < dag.get_units().size(); u++)
     {
@@ -426,6 +440,8 @@ void unique_reg_ids::transform(schedule_dag& dag, const scheduler& s, schedule_c
     dag.remove_dependencies(to_remove);
     dag.add_dependencies(to_add);
 
+    XTM_STOP(unique_reg_ids)
+
     status.set_modified_graph(true);
     status.set_deadlock(false);
     status.set_junction(false);
@@ -439,8 +455,9 @@ void unique_reg_ids::transform(schedule_dag& dag, const scheduler& s, schedule_c
 }
 
 /**
- * unique_reg_ids
+ * strip_useless_order_deps
  */
+XTM_DECLARE(strip_useless_order_deps)
 
 strip_useless_order_deps::strip_useless_order_deps()
 {
@@ -465,6 +482,7 @@ void strip_useless_order_deps::transform(schedule_dag& dag, const scheduler& s, 
     std::vector< schedule_dep > to_remove;
 
     status.begin_transformation();
+    XTM_START(strip_useless_order_deps)
 
     /* As a first step, remove duplicate order, that is when
      * there are several order deps between same pair of units */
@@ -504,8 +522,6 @@ void strip_useless_order_deps::transform(schedule_dag& dag, const scheduler& s, 
             path[u][name_map[*it]] = true;
     }
 
-    
-
     /* To remove a dependency, we go through each node U
      * If for such a node, there are two dependencies A->U and B->U
      * such that there is a path from A to B (A--->B), and A->U is an
@@ -543,6 +559,8 @@ void strip_useless_order_deps::transform(schedule_dag& dag, const scheduler& s, 
     for(size_t i = 0; i < to_remove.size(); i++)
         dag.remove_dependency(to_remove[i]);
 
+    XTM_STOP(strip_useless_order_deps)
+
     status.set_modified_graph(to_remove.size() > 0);
     status.set_deadlock(false);
     status.set_junction(false);
@@ -558,6 +576,7 @@ void strip_useless_order_deps::transform(schedule_dag& dag, const scheduler& s, 
 /**
  * smart_fuse_two_units
  */
+XTM_DECLARE(smart_fuse_two_units)
 
 smart_fuse_two_units::smart_fuse_two_units(bool allow_non_optimal_irp_calculation,
     bool allow_weak)
@@ -581,6 +600,7 @@ void smart_fuse_two_units::transform(schedule_dag& dag, const scheduler& s, sche
     std::vector< chain_schedule_unit * > fused;
 
     status.begin_transformation();
+    XTM_START(smart_fuse_two_units)
     
     while(true)
     {
@@ -661,6 +681,8 @@ void smart_fuse_two_units::transform(schedule_dag& dag, const scheduler& s, sche
         modified = true;
     }
 
+    XTM_STOP(smart_fuse_two_units)
+
     status.set_modified_graph(modified);
     status.set_deadlock(false);
     status.set_junction(false);
@@ -668,6 +690,7 @@ void smart_fuse_two_units::transform(schedule_dag& dag, const scheduler& s, sche
     /* schedule DAG */
     s.schedule(dag, c);
 
+    XTM_START(smart_fuse_two_units)
     /* unfuse units */
     std::reverse(fused.begin(), fused.end());
 
@@ -685,6 +708,8 @@ void smart_fuse_two_units::transform(schedule_dag& dag, const scheduler& s, sche
         c.expand_unit_at(j, fused[i]->get_chain());
         delete fused[i];
     }
+
+    XTM_STOP(smart_fuse_two_units)
 
     status.end_transformation();
 
@@ -714,6 +739,7 @@ bool smart_fuse_two_units::weak_fuse(schedule_dag& dag, const schedule_unit *a, 
 /**
  * simplify_order_cuts
  */
+XTM_DECLARE(simplify_order_cuts)
 
 simplify_order_cuts::simplify_order_cuts()
 {
@@ -727,7 +753,9 @@ void simplify_order_cuts::transform(schedule_dag& dag, const scheduler& s, sched
     transformation_status& status) const
 {
     DEBUG_CHECK_BEGIN_X(dag, c)
+    XTM_START(simplify_order_cuts)
     do_transform(dag, s, c, status, 0);
+    XTM_STOP(simplify_order_cuts)
     DEBUG_CHECK_END_X(c)
 }
 
@@ -785,8 +813,12 @@ void simplify_order_cuts::do_transform(schedule_dag& dag, const scheduler& s, sc
         status.set_deadlock(false);
         status.set_junction(false);
     }
+
+    XTM_STOP(simplify_order_cuts)
     /* otherwise, schedule the whole graph */
     s.schedule(dag, c);
+
+    XTM_START(simplify_order_cuts)
 
     if(level == 0)
     {
@@ -798,6 +830,8 @@ void simplify_order_cuts::do_transform(schedule_dag& dag, const scheduler& s, sc
 /**
  * split_def_use_dom_use_deps
  */
+XTM_DECLARE(split_def_use_dom_use_deps)
+
 split_def_use_dom_use_deps::split_def_use_dom_use_deps(bool generate_new_reg_ids)
     :m_generate_new_reg_ids(generate_new_reg_ids)
 {
@@ -812,6 +846,7 @@ void split_def_use_dom_use_deps::transform(schedule_dag& dag, const scheduler& s
 {
     debug() << "---> split_def_use_dom_use_deps::transform\n";
     DEBUG_CHECK_BEGIN_X(dag, c)
+    XTM_START(split_def_use_dom_use_deps)
     
     bool graph_changed = false;
     /* Shortcuts */
@@ -993,12 +1028,15 @@ void split_def_use_dom_use_deps::transform(schedule_dag& dag, const scheduler& s
         dag.replace_unit(old, chains_added[i]);
     }
 
+    XTM_STOP(split_def_use_dom_use_deps)
+
     status.set_modified_graph(graph_changed);
     status.set_deadlock(false);
     status.set_junction(false);
 
     s.schedule(dag, c);
 
+    XTM_START(split_def_use_dom_use_deps)
     /* replace back units */
     std::reverse(chains_added.begin(), chains_added.end());
 
@@ -1016,6 +1054,8 @@ void split_def_use_dom_use_deps::transform(schedule_dag& dag, const scheduler& s
         c.expand_unit_at(j, chains_added[i]->get_chain());
         delete chains_added[i];
     }
+
+    XTM_STOP(split_def_use_dom_use_deps)
 
     status.end_transformation();
 
@@ -1288,6 +1328,8 @@ void break_symmetrical_branch_merge::transform(schedule_dag& dag, const schedule
 /**
  * collapse_chains
  */
+XTM_DECLARE(collapse_chains)
+
 collapse_chains::collapse_chains()
 {
 }
@@ -1303,12 +1345,14 @@ void collapse_chains::transform(schedule_dag& dag, const scheduler& s, schedule_
     DEBUG_CHECK_BEGIN_X(dag, c)
     
     status.begin_transformation();
-
+    
     /* Check if the graph is a chain */
     if(dag.get_units().size() <= 1 || dag.get_roots().size() != 1)
         goto Lnot_chain;
     
     {
+        XTM_START(collapse_chains)
+        
         std::vector< const schedule_unit * > chain;
         const schedule_unit *unit = dag.get_roots()[0];
         unsigned irp = 0;
@@ -1351,7 +1395,11 @@ void collapse_chains::transform(schedule_dag& dag, const scheduler& s, schedule_
         status.set_junction(false);
         status.set_deadlock(false);
 
+        XTM_STOP(collapse_chains)
+
         s.schedule(dag, c);
+
+        XTM_START(collapse_chains)
 
         for(size_t i = 0; i < c.get_unit_count(); i++)
         {
@@ -1361,6 +1409,8 @@ void collapse_chains::transform(schedule_dag& dag, const scheduler& s, schedule_
                 break;
             }
         }
+
+        XTM_STOP(collapse_chains)
 
         #endif
     }
@@ -1385,6 +1435,8 @@ void collapse_chains::transform(schedule_dag& dag, const scheduler& s, schedule_
 /**
  * split_merge_branch_units
  */
+XTM_DECLARE(split_merge_branch_units)
+
 split_merge_branch_units::split_merge_branch_units()
 {
 }
@@ -1397,7 +1449,9 @@ void split_merge_branch_units::transform(schedule_dag& dag, const scheduler& s, 
     transformation_status& status) const
 {
     DEBUG_CHECK_BEGIN_X(dag, c)
+    XTM_START(split_merge_branch_units)
     do_transform(dag, s, c, status, 0);
+    XTM_STOP(split_merge_branch_units)
     DEBUG_CHECK_END_X(c)
 }
 
@@ -1457,8 +1511,13 @@ void split_merge_branch_units::do_transform(schedule_dag& dag, const scheduler& 
                 status.set_junction(true);
                 status.set_deadlock(false);
             }
+            
+            XTM_STOP(split_merge_branch_units)
 
             s.schedule(dag, c);
+
+            XTM_START(split_merge_branch_units)
+            
             if(c.get_unit_count() == 0 || c.get_unit_at(c.get_unit_count() - 1) != unit)
                 throw std::runtime_error("split_merge_branch_units::do_transform detected a bad schedule");
             c.remove_unit_at(c.get_unit_count() - 1);
@@ -1480,7 +1539,11 @@ void split_merge_branch_units::do_transform(schedule_dag& dag, const scheduler& 
         status.set_deadlock(false);
     }
 
+    XTM_STOP(split_merge_branch_units)
+
     s.schedule(dag, c);
+
+    XTM_START(split_merge_branch_units)
 
     if(level == 0)
     {
@@ -1492,6 +1555,8 @@ void split_merge_branch_units::do_transform(schedule_dag& dag, const scheduler& 
 /**
  * strip_dataless_units
  */
+XTM_DECLARE(strip_dataless_units)
+
 strip_dataless_units::strip_dataless_units()
 {
 }
@@ -1511,7 +1576,8 @@ void strip_dataless_units::transform(schedule_dag& dag, const scheduler& s, sche
     std::vector< std::pair< const schedule_unit *,
                     std::pair< std::vector< const schedule_unit * >,
                                std::vector< const schedule_unit * > > > > stripped;
-    
+
+    XTM_START(strip_dataless_units)
     /* We repeat everything from the beginning at each step because
      * each modification can add order dependencies and delete a node,
      * so it's easier this way */
@@ -1575,10 +1641,14 @@ void strip_dataless_units::transform(schedule_dag& dag, const scheduler& s, sche
         dag.add_dependencies(to_add);
     }
 
+    XTM_STOP(strip_dataless_units)
+
     status.set_modified_graph(stripped.size() > 0);
     status.set_deadlock(false);
     status.set_junction(false);
     s.schedule(dag, c);
+
+    XTM_START(strip_dataless_units)
 
     std::reverse(stripped.begin(), stripped.end());
 
@@ -1626,6 +1696,8 @@ void strip_dataless_units::transform(schedule_dag& dag, const scheduler& s, sche
 
         c.insert_unit_at(real_pos, inst);
     }
+
+    XTM_STOP(strip_dataless_units)
 
     status.end_transformation();
 

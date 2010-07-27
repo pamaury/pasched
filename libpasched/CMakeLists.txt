@@ -4,6 +4,10 @@ set(CMAKE_MODULE_PATH ${pasched_SOURCE_DIR}/cmake/Modules ${CMAKE_MODULE_PATH})
 
 option(HAS_SYMPHONY "Enable SYMPHONY support" OFF)
 option(BUILD_STATIC_LIB "Build static library instead of a shared one" OFF)
+option(ENABLE_DAG_AUTO_CHECK_CONSISTENCY "Enable automatic consistency check in schedule DAGs (really expensive)" OFF)
+option(ENABLE_SCHED_AUTO_CHECK_RP "Enable automatic check of register pressure in schedulers" OFF)
+option(ENABLE_XFORM_AUTO_CHECK_RP "Enable automatic check of register pressure in transformations" OFF)
+option(ENABLE_XFORM_TIME_STAT "Enable time statistics of transformation" OFF)
 
 include(FindGLPK)
 if(HAS_SYMPHONY AND NOT GLPK_FOUND)
