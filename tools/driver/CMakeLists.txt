@@ -9,5 +9,13 @@ endif(NOT PASCHED_FOUND)
 
 include_directories(${PASCHED_INCLUDE_DIR})
 
+set(CMAKE_BUILD_TYPE Profile)
+set(CMAKE_CXX_FLAGS_PROFILE "-pg -g")
+set(CMAKE_C_FLAGS_PROFILE "-pg -g")
+
+if(CMAKE_COMPILER_IS_GNUCC)
+    add_definitions("-Wall -pedantic")
+endif(CMAKE_COMPILER_IS_GNUCC)
+
 add_executable(driver driver.cpp)
 target_link_libraries(driver ${PASCHED_LIBRARY})

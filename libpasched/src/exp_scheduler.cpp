@@ -164,7 +164,7 @@ namespace
         {
             st.clock_cycle = st.clock_div;
             clock_t c = clock();
-            if((c - st.clock_start) >= (CLOCKS_PER_SEC / 1000) * st.timeout)
+            if((c - st.clock_start) >= (long)((CLOCKS_PER_SEC / 1000) * st.timeout))
                 return true;
         }
         

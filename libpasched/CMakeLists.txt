@@ -3,6 +3,7 @@ project(pasched)
 set(CMAKE_MODULE_PATH ${pasched_SOURCE_DIR}/cmake/Modules ${CMAKE_MODULE_PATH})
 
 option(HAS_SYMPHONY "Enable SYMPHONY support" OFF)
+option(BUILD_STATIC_LIB "Build static library instead of a shared one" OFF)
 
 include(FindGLPK)
 if(HAS_SYMPHONY AND NOT GLPK_FOUND)
@@ -53,7 +54,13 @@ if(HAS_SYMPHONY)
     include_directories(${OSI_CLP_INCLUDE_DIR})
     include_directories(${SYMPHONY_INCLUDE_DIR})
 endif(HAS_SYMPHONY)
-add_library(pasched SHARED ${pasched_SOURCE_FILES})
+
+if(BUILD_STATIC_LIB)
+    add_library(pasched STATIC ${pasched_SOURCE_FILES})
+else(BUILD_STATIC_LIB)
+    add_library(pasched SHARED ${pasched_SOURCE_FILES})
+endif(BUILD_STATIC_LIB)
+
 target_link_libraries(pasched ${GLPK_LIBRARY})
 if(HAS_SYMPHONY)
     target_link_libraries(pasched ${COIN_UTILS_LIBRARY})
@@ -66,7 +73,19 @@ endif(HAS_SYMPHONY)
 
 CONFIGURE_FILE(${pasched_SOURCE_DIR}/include/libpasched/config.hpp.cmake ${pasched_SOURCE_DIR}/include/libpasched/config.hpp)
 
-install(TARGETS pasched LIBRARY DESTINATION lib)
+set(CMAKE_BUILD_TYPE Profile)
+set(CMAKE_CXX_FLAGS_PROFILE "-pg -g")
+set(CMAKE_C_FLAGS_PROFILE "-pg -g")
+
+if(CMAKE_COMPILER_IS_GNUCC)
+    add_definitions("-Wall -pedantic")
+endif(CMAKE_COMPILER_IS_GNUCC)
+
+if(BUILD_STATIC_LIB)
+    install(TARGETS pasched ARCHIVE DESTINATION lib)
+else(BUILD_STATIC_LIB)
+    install(TARGETS pasched LIBRARY DESTINATION lib)
+endif(BUILD_STATIC_LIB)
 install(FILES ${pasched_PUBLIC_HEADERS} DESTINATION include)
 install(FILES ${pasched_LIBPASCHED_HEADERS} DESTINATION include/libpasched)
 

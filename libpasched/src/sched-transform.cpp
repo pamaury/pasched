@@ -817,40 +817,40 @@ void split_def_use_dom_use_deps::transform(schedule_dag& dag, const scheduler& s
     /* Shortcuts */
     const std::vector< const schedule_unit * >& units = dag.get_units();
     size_t n = units.size();
+    /* Map a unit pointer to a number */
+    std::map< const schedule_unit *, size_t > name_map;
+    /* path[u][v] is true if there is a path from u to v */
+    std::vector< std::vector< bool > > path;
+    /* First compute path map, it will not changed during the algorithm
+     * even though some edges are changed */
+    path.resize(n);
+    for(size_t u = 0; u < n; u++)
+    {
+        name_map[units[u]] = u;
+        path[u].resize(n);
+    }
+
+    /* Fill path */
+    for(size_t u = 0; u < n; u++)
+    {
+        std::set< const schedule_unit * > reach = dag.get_reachable(units[u],
+            schedule_dag::rf_follow_succs | schedule_dag::rf_include_unit);
+        std::set< const schedule_unit * >::iterator it = reach.begin();
+        for(; it != reach.end(); ++it)
+            path[u][name_map[*it]] = true;
+        /*
+        std::cout << "Reachable from " << units[u]->to_string() << "\n";
+        std::cout << "  " << reach << "\n";
+        */
+    }
     /* Chain units added (each one "contains" only one unit but we need to tweak IRP) */
-    std::vector< const chain_schedule_unit * > chains_added;
+    std::vector< chain_schedule_unit * > chains_added;
     
     status.begin_transformation();
 
     /* Each iteration might modify the graph */
     while(true)
     {
-        /* Map a unit pointer to a number */
-        std::map< const schedule_unit *, size_t > name_map;
-        /* path[u][v] is true if there is a path from u to v */
-        std::vector< std::vector< bool > > path;
-        /* First compute path map, it will not changed during the algorithm
-         * even though some edges are changed */
-        path.resize(n);
-        for(size_t u = 0; u < n; u++)
-        {
-            name_map[units[u]] = u;
-            path[u].resize(n);
-        }
-
-        /* Fill path */
-        for(size_t u = 0; u < n; u++)
-        {
-            std::set< const schedule_unit * > reach = dag.get_reachable(units[u],
-                schedule_dag::rf_follow_succs | schedule_dag::rf_include_unit);
-            std::set< const schedule_unit * >::iterator it = reach.begin();
-            for(; it != reach.end(); ++it)
-                path[u][name_map[*it]] = true;
-            /*
-            std::cout << "Reachable from " << units[u]->to_string() << "\n";
-            std::cout << "  " << reach << "\n";
-            */
-        }
         /* For each unit U */
         for(size_t u = 0; u < dag.get_units().size(); u++)
         {
@@ -955,11 +955,10 @@ void split_def_use_dom_use_deps::transform(schedule_dag& dag, const scheduler& s
                     /* Create a new unit to replace the old one */
                     chain_schedule_unit *scu = new chain_schedule_unit;
                     scu->get_chain().push_back(dom);
-                    /* increase IRP by one because of the splitted variable dep */
-                    scu->set_internal_register_pressure(dom->internal_register_pressure() + 1);
+                    /* RIP is computed later */
 
-                    /* warning here: replace_unit break_units() order, that's why we recompute a map */
-                    dag.replace_unit(dom, scu);
+                    /* warning here: replace_unit would break_units() order, that's why we delay
+                     * the replacement to after the loop */
                     chains_added.push_back(scu);
                     
                     goto Lgraph_changed;
@@ -973,6 +972,25 @@ void split_def_use_dom_use_deps::transform(schedule_dag& dag, const scheduler& s
         Lgraph_changed:
         graph_changed = true;
         continue;
+    }
+
+    /* now do the replacement, using a map to forward changes if any */
+    std::map< const schedule_unit *, const schedule_unit * > forward_map;
+    for(size_t i = 0; i < chains_added.size(); i++)
+    {
+        assert(chains_added[i]->get_chain().size() == 1);
+        const schedule_unit *old = chains_added[i]->get_chain()[0];
+        /* forward */
+        while(forward_map.find(old) != forward_map.end())
+            old = forward_map[old];
+        /* update chain */
+        chains_added[i]->get_chain()[0] = old;
+        /* compute IRP */
+        chains_added[i]->set_internal_register_pressure(old->internal_register_pressure() + 1);
+        /* update map */
+        forward_map[old] = chains_added[i];
+        /* do replacement */
+        dag.replace_unit(old, chains_added[i]);
     }
 
     status.set_modified_graph(graph_changed);
