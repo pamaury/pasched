@@ -682,9 +682,7 @@ void smart_fuse_two_units::transform(schedule_dag& dag, const scheduler& s, sche
         if(j == c.get_unit_count())
             throw std::runtime_error("smart_fuse_two_units::transform detected inconsistent schedule chain");
 
-        c.remove_unit_at(j);
-        for(size_t k = 0; k < fused[i]->get_chain().size(); k++)
-            c.insert_unit_at(j + k, fused[i]->get_chain()[k]);
+        c.expand_unit_at(j, fused[i]->get_chain());
         delete fused[i];
     }
 
@@ -819,39 +817,40 @@ void split_def_use_dom_use_deps::transform(schedule_dag& dag, const scheduler& s
     /* Shortcuts */
     const std::vector< const schedule_unit * >& units = dag.get_units();
     size_t n = units.size();
-    /* Map a unit pointer to a number */
-    std::map< const schedule_unit *, size_t > name_map;
-    /* path[u][v] is true if there is a path from u to v */
-    std::vector< std::vector< bool > > path;
+    /* Chain units added (each one "contains" only one unit but we need to tweak IRP) */
+    std::vector< const chain_schedule_unit * > chains_added;
     
     status.begin_transformation();
 
-    /* First compute path map, it will not changed during the algorithm
-     * even though some edges are changed */
-    path.resize(n);
-    for(size_t u = 0; u < n; u++)
-    {
-        name_map[units[u]] = u;
-        path[u].resize(n);
-    }
-
-    /* Fill path */
-    for(size_t u = 0; u < n; u++)
-    {
-        std::set< const schedule_unit * > reach = dag.get_reachable(units[u],
-            schedule_dag::rf_follow_succs | schedule_dag::rf_include_unit);
-        std::set< const schedule_unit * >::iterator it = reach.begin();
-        for(; it != reach.end(); ++it)
-            path[u][name_map[*it]] = true;
-        /*
-        std::cout << "Reachable from " << units[u]->to_string() << "\n";
-        std::cout << "  " << reach << "\n";
-        */
-    }
-    
     /* Each iteration might modify the graph */
     while(true)
     {
+        /* Map a unit pointer to a number */
+        std::map< const schedule_unit *, size_t > name_map;
+        /* path[u][v] is true if there is a path from u to v */
+        std::vector< std::vector< bool > > path;
+        /* First compute path map, it will not changed during the algorithm
+         * even though some edges are changed */
+        path.resize(n);
+        for(size_t u = 0; u < n; u++)
+        {
+            name_map[units[u]] = u;
+            path[u].resize(n);
+        }
+
+        /* Fill path */
+        for(size_t u = 0; u < n; u++)
+        {
+            std::set< const schedule_unit * > reach = dag.get_reachable(units[u],
+                schedule_dag::rf_follow_succs | schedule_dag::rf_include_unit);
+            std::set< const schedule_unit * >::iterator it = reach.begin();
+            for(; it != reach.end(); ++it)
+                path[u][name_map[*it]] = true;
+            /*
+            std::cout << "Reachable from " << units[u]->to_string() << "\n";
+            std::cout << "  " << reach << "\n";
+            */
+        }
         /* For each unit U */
         for(size_t u = 0; u < dag.get_units().size(); u++)
         {
@@ -885,7 +884,7 @@ void split_def_use_dom_use_deps::transform(schedule_dag& dag, const scheduler& s
             {
                 std::vector< schedule_dep > reg_use = reg_succs_it->second;
 
-                /* See of one successor S of U dominate all use
+                /* See if one successor S of U dominate all use
                  * NOTE: S can be any successor of U
                  * NOTE: there can be several dominators, we list tham all */
                 std::vector< const schedule_unit * > dominators;
@@ -952,6 +951,16 @@ void split_def_use_dom_use_deps::transform(schedule_dag& dag, const scheduler& s
                             schedule_dep::data_dep, cur_reg_it)); /* keep reg id here */
 
                     dag.add_dependencies(reg_use);
+
+                    /* Create a new unit to replace the old one */
+                    chain_schedule_unit *scu = new chain_schedule_unit;
+                    scu->get_chain().push_back(dom);
+                    /* increase IRP by one because of the splitted variable dep */
+                    scu->set_internal_register_pressure(dom->internal_register_pressure() + 1);
+
+                    /* warning here: replace_unit break_units() order, that's why we recompute a map */
+                    dag.replace_unit(dom, scu);
+                    chains_added.push_back(scu);
                     
                     goto Lgraph_changed;
                 }
@@ -971,6 +980,24 @@ void split_def_use_dom_use_deps::transform(schedule_dag& dag, const scheduler& s
     status.set_junction(false);
 
     s.schedule(dag, c);
+
+    /* replace back units */
+    std::reverse(chains_added.begin(), chains_added.end());
+
+    for(size_t i = 0; i < chains_added.size(); i++)
+    {
+        size_t j;
+        for(j = 0; j < c.get_unit_count(); j++)
+        {
+            if(c.get_unit_at(j) == chains_added[i])
+                break;
+        }
+        if(j == c.get_unit_count())
+            throw std::runtime_error("split_def_use_dom_use_deps::transform detected inconsistent schedule chain");
+
+        c.expand_unit_at(j, chains_added[i]->get_chain());
+        delete chains_added[i];
+    }
 
     status.end_transformation();
 

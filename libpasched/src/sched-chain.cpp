@@ -2,6 +2,7 @@
 #include "sched-dag.hpp"
 #include <stdexcept>
 #include <map>
+#include <cassert>
 
 namespace PAMAURY_SCHEDULER_NS
 {
@@ -44,6 +45,52 @@ bool schedule_chain::check_against_dag(const schedule_dag& dag) const
             fail("schedule_chain::check_against_dag detected unsatisfied dependency");
     }
     return true;
+}
+
+size_t schedule_chain::compute_rp_against_dag(const schedule_dag& dag) const
+{
+    std::map< schedule_dep::reg_t, size_t > nb_use_left;
+    size_t rp = 0;
+
+    for(size_t i = 0; i < get_unit_count(); i++)
+    {
+        const schedule_unit *unit = get_unit_at(i);
+        /* use & destroy regs */
+        std::set< schedule_dep::reg_t > set;
+        std::set< schedule_dep::reg_t >::iterator it;
+
+        set = dag.get_reg_use(unit);
+        for(it = set.begin(); it != set.end(); ++it)
+        {
+            assert(nb_use_left.find(*it) != nb_use_left.end() && "Used variable is not alive !");
+            assert(nb_use_left[*it] > 0 && "Variable is use more times than expected !");
+
+            nb_use_left[*it]--;
+            if(nb_use_left[*it] == 0)
+                nb_use_left.erase(*it);
+        }
+        /* update RP */
+        rp = std::max(rp, nb_use_left.size() + unit->internal_register_pressure());
+        /* create regs */
+        set = dag.get_reg_create(unit);
+        for(it = set.begin(); it != set.end(); ++it)
+        {
+            assert(nb_use_left.find(*it) == nb_use_left.end() && "Created variable is already alive !");
+
+            nb_use_left[*it] = 0;
+            for(size_t i = 0; i < dag.get_succs(unit).size(); i++)
+            {
+                const schedule_dep& dep = dag.get_succs(unit)[i];
+                if(dep.kind() == schedule_dep::data_dep && dep.reg() == *it)
+                    nb_use_left[*it]++;
+            }
+        }
+        /* update RP */
+        rp = std::max(rp, nb_use_left.size());
+    }
+    assert(nb_use_left.size() == 0 && "Variables still alive at end of schedule !");
+
+    return rp;
 }
 
 /**
@@ -114,17 +161,18 @@ void generic_schedule_chain::expand_unit_at(size_t pos, const std::vector< const
     if(v.size() == 0)
     {
         remove_unit_at(pos);
-        return;
     }
-
-    m_units.insert(m_units.begin() + (1 + pos), v.begin() + 1, v.end());
-    m_units[pos] = v[0];
+    else
+    {
+        m_units.insert(m_units.begin() + (1 + pos), v.begin() + 1, v.end());
+        m_units[pos] = v[0];
+    }
 }
 
 void generic_schedule_chain::expand_unit_at(size_t pos, const schedule_chain& c)
 {
     std::vector< const schedule_unit * > v;
-    v.reserve(c.get_unit_count());
+    v.resize(c.get_unit_count());
     for(size_t i = 0; i < c.get_unit_count(); i++)
         v[i] = c.get_unit_at(i);
     expand_unit_at(pos, v);

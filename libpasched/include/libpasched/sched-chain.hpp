@@ -33,6 +33,7 @@ class schedule_chain
     virtual void append_unit(const schedule_unit *unit) = 0;
 
     virtual bool check_against_dag(const schedule_dag& dag) const;
+    virtual size_t compute_rp_against_dag(const schedule_dag& dag) const;
 
     protected:
 };

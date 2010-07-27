@@ -368,7 +368,7 @@ void mris_ilp_scheduler::schedule(schedule_dag& dag, schedule_chain& sc) const
                     {
                         int row = glp_add_rows(p, 1);
 
-                        sprintf(name, "(2a)(%u(r%d),%u)", u, reg_created[u].reg_info[i].id, v);
+                        sprintf(name, "(4a)(%u(r%d),%u)", u, reg_created[u].reg_info[i].id, v);
                         glp_set_row_name(p, row, name);
                         glp_set_row_bnds(p, row, GLP_UP, 0, 1);
                         int idx[4];
@@ -386,7 +386,7 @@ void mris_ilp_scheduler::schedule(schedule_dag& dag, schedule_chain& sc) const
                     {
                         int row = glp_add_rows(p, 1);
 
-                        sprintf(name, "(2b)(%u(r%d),%u)", u, reg_created[u].reg_info[i].id, v);
+                        sprintf(name, "(4b)(%u(r%d),%u)", u, reg_created[u].reg_info[i].id, v);
                         glp_set_row_name(p, row, name);
                         glp_set_row_bnds(p, row, GLP_LO, 0, 0);
                         int idx[4];
@@ -404,7 +404,7 @@ void mris_ilp_scheduler::schedule(schedule_dag& dag, schedule_chain& sc) const
                     {
                         int row = glp_add_rows(p, 1);
 
-                        sprintf(name, "(4a)(%u(r%d),%u)", u, reg_created[u].reg_info[i].id, v);
+                        sprintf(name, "(5a)(%u(r%d),%u)", u, reg_created[u].reg_info[i].id, v);
                         glp_set_row_name(p, row, name);
                         glp_set_row_bnds(p, row, GLP_LO, 0, 0);
 
@@ -429,7 +429,7 @@ void mris_ilp_scheduler::schedule(schedule_dag& dag, schedule_chain& sc) const
                     {
                         int row = glp_add_rows(p, 1);
 
-                        sprintf(name, "(4b)(%u(r%d),%u)", u, reg_created[u].reg_info[i].id, v);
+                        sprintf(name, "(5b)(%u(r%d),%u)", u, reg_created[u].reg_info[i].id, v);
                         glp_set_row_name(p, row, name);
                         glp_set_row_bnds(p, row, GLP_UP, 0, 0);
 
@@ -454,34 +454,22 @@ void mris_ilp_scheduler::schedule(schedule_dag& dag, schedule_chain& sc) const
         // register pressure synthesis
         for(unsigned u = 0; u < n; u++)
         {
-            // z >= rp(u)
-            // <=> z - rp(u) >= 0
+            // z >= rp(u) + MAX(0, irp(u) - var_created(u))
+            // <=> z - rp(u) >= MAX(0, irp(u) - var_created(u))
             {
                 int row = glp_add_rows(p, 1);
-
-                sprintf(name, "(5)(%u)", u);
+                
+                double lo = std::max(0, (int)units[u]->internal_register_pressure() - (int)reg_created[u].reg_info.size());
+                
+                sprintf(name, "(6)(%u)", u);
                 glp_set_row_name(p, row, name);
-                glp_set_row_bnds(p, row, GLP_LO, 0, 0);
+                glp_set_row_bnds(p, row, GLP_LO, lo, 0);
                 int idx[3];
                 idx[1] = z_col;
                 idx[2] = rp_u_col[u];
                 double val[3];
                 val[1] = 1.0;
                 val[2] = -1.0;
-                glp_set_mat_row(p, row, 2, idx, val);
-            }
-            
-            // z >= irp(u)
-            {
-                int row = glp_add_rows(p, 1);
-                
-                sprintf(name, "(6)(%u)", u);
-                glp_set_row_name(p, row, name);
-                glp_set_row_bnds(p, row, GLP_LO, units[u]->internal_register_pressure(), 0);
-                int idx[2];
-                idx[1] = z_col;
-                double val[2];
-                val[1] = 1.0;
                 glp_set_mat_row(p, row, 2, idx, val);
             }
         }
@@ -512,11 +500,11 @@ void mris_ilp_scheduler::schedule(schedule_dag& dag, schedule_chain& sc) const
         }
         #endif
 
+        glp_term_out(m_verbose ? GLP_ON : GLP_OFF);
         glp_write_lp(p, 0, "test.lp");
         glp_write_mps(p, GLP_MPS_FILE, 0, "test.mps");
 
         #ifdef SOLVE_WITH_GLPK
-        glp_term_out(m_verbose ? GLP_ON : GLP_OFF);
 
         /*
         glp_iptcp pre_cp;
@@ -630,6 +618,15 @@ void mris_ilp_scheduler::schedule(schedule_dag& dag, schedule_chain& sc) const
 
         for(unsigned u = 0; u < n; u++)
             sc.append_unit(units[placement[u]]);
+
+        if(true)
+        {
+            std::cout << "RP=" << glp_mip_obj_val(p) << "\n";
+            generic_schedule_chain gsc;
+            for(unsigned u = 0; u < n; u++)
+                gsc.append_unit(units[placement[u]]);
+            std::cout << "  vs RP=" << gsc.compute_rp_against_dag(dag) << "\n";
+        }
         
         glp_delete_prob(p);
         return;

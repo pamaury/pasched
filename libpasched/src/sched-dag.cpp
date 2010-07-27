@@ -73,7 +73,7 @@ void schedule_dag::remove_units(const std::vector< const schedule_unit * >& unit
 }
 
 std::set< const schedule_unit * > schedule_dag::get_reachable(const schedule_unit *unit,
-    unsigned flags)
+    unsigned flags) const
 {
     std::set< const schedule_unit * > s;
     std::queue< const schedule_unit * > q;
@@ -120,7 +120,7 @@ std::set< const schedule_unit * > schedule_dag::get_reachable(const schedule_uni
 }
 
 std::set< schedule_dep::reg_t > schedule_dag::get_reg_create(
-    const schedule_unit *unit)
+    const schedule_unit *unit) const
 {
     std::set< schedule_dep::reg_t > s;
     for(size_t i = 0; i < get_succs(unit).size(); i++)
@@ -130,7 +130,7 @@ std::set< schedule_dep::reg_t > schedule_dag::get_reg_create(
 }
 
 std::set< schedule_dep::reg_t > schedule_dag::get_reg_use(
-    const schedule_unit *unit)
+    const schedule_unit *unit) const
 {
     std::set< schedule_dep::reg_t > s;
     for(size_t i = 0; i < get_preds(unit).size(); i++)
@@ -140,7 +140,7 @@ std::set< schedule_dep::reg_t > schedule_dag::get_reg_use(
 }
 
 std::set< schedule_dep::reg_t > schedule_dag::get_reg_destroy(
-    const schedule_unit *unit)
+    const schedule_unit *unit) const
 {
     std::set< schedule_dep::reg_t > s;
     for(size_t i = 0; i < get_preds(unit).size(); i++)
@@ -165,7 +165,7 @@ std::set< schedule_dep::reg_t > schedule_dag::get_reg_destroy(
 }
 
 std::set< schedule_dep::reg_t > schedule_dag::get_reg_destroy_exact(
-    const schedule_unit *unit)
+    const schedule_unit *unit) const
 {
     std::set< schedule_dep::reg_t > s;
     
@@ -205,7 +205,7 @@ std::set< schedule_dep::reg_t > schedule_dag::get_reg_destroy_exact(
 }
 
 std::set< schedule_dep::reg_t > schedule_dag::get_reg_dont_destroy_exact(
-    const schedule_unit *unit)
+    const schedule_unit *unit) const
 {
     std::set< schedule_dep::reg_t > s;
     /* compute reachable set of unit U */
@@ -421,7 +421,7 @@ void schedule_dag::collapse_subgraph(const std::set< const schedule_unit * >& su
         {
             schedule_dep dep = get_preds(unit)[i];
             /* dependency must come from outside of the subgraph */
-            if(sub.find(dep.to()) != sub.end())
+            if(sub.find(dep.from()) != sub.end())
                 continue;
             dep.set_to(new_unit);
             to_add.push_back(dep);
@@ -443,6 +443,15 @@ void schedule_dag::collapse_subgraph(const std::set< const schedule_unit * >& su
     add_unit(new_unit);
     /* add new dependencies */
     add_dependencies(to_add);
+}
+
+void schedule_dag::replace_unit(const schedule_unit *old, const schedule_unit *new_unit)
+{
+    /* quick and dirty solution */
+    std::set< const schedule_unit * > sub;
+    sub.insert(old);
+
+    collapse_subgraph(sub, new_unit);
 }
 
 schedule_dep::reg_t schedule_dag::generate_unique_reg_id() const
@@ -709,6 +718,19 @@ bool generic_schedule_dag::is_consistent(std::string *out_msg) const
             NOT_CONSISTENT("dep in master list is not attached to source");
         if(!container_contains(m_unit_map[dep.to()].preds, dep))
             NOT_CONSISTENT("dep in master list is not attached to target");
+    }
+    // check loops
+    for(size_t i = 0; i < m_units.size(); i++)
+    {
+        const schedule_unit *unit = m_units[i];
+        su_data& d = m_unit_map[unit];
+        for(size_t j = 0; j < d.succs.size(); j++)
+        {
+            const schedule_unit *s = d.succs[j].to();
+            std::set< const schedule_unit * > set = get_reachable(s, rf_follow_succs);
+            if(set.find(unit) != set.end())
+                NOT_CONSISTENT("loop in DAG");
+        }
     }
 
     return true;

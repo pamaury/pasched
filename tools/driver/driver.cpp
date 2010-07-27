@@ -627,10 +627,11 @@ int __main(int argc, char **argv)
     pipeline.add_stage(&statistics);
     pipeline.add_stage(&remover);
     pipeline.add_stage(&accumulator);
+    
     snd_stage_pipe.add_stage(new pasched::strip_dataless_units);
     snd_stage_pipe.add_stage(new pasched::strip_useless_order_deps);
     snd_stage_pipe.add_stage(new pasched::split_def_use_dom_use_deps);
-    snd_stage_pipe.add_stage(new pasched::split_def_use_dom_use_partial);
+    //snd_stage_pipe.add_stage(new pasched::split_def_use_dom_use_partial);
     snd_stage_pipe.add_stage(new pasched::smart_fuse_two_units(false, true));
     snd_stage_pipe.add_stage(new pasched::simplify_order_cuts);
     //snd_stage_pipe.add_stage(new pasched::break_symmetrical_branch_merge);
@@ -639,7 +640,10 @@ int __main(int argc, char **argv)
 
     #if 1
     pasched::basic_list_scheduler basic_sched;
-    pasched::mris_ilp_scheduler sched(&basic_sched, 1000, true);
+    pasched::mris_ilp_scheduler sched(&basic_sched, 0, false);
+    #elif 1
+    pasched::basic_list_scheduler basic_sched;
+    pasched::exp_scheduler sched(&basic_sched, 1000, true);
     #else
     pasched::basic_list_scheduler sched;
     #endif

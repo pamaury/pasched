@@ -74,7 +74,7 @@ class schedule_dag
     };
 
     virtual std::set< const schedule_unit * > get_reachable(
-        const schedule_unit *unit, unsigned flags);
+        const schedule_unit *unit, unsigned flags) const;
 
     /** Helper functions for register information */
 
@@ -82,12 +82,12 @@ class schedule_dag
      * Compute the set of register created by a schedule unit
      */
     virtual std::set< schedule_dep::reg_t > get_reg_create(
-        const schedule_unit *unit);
+        const schedule_unit *unit) const;
     /**
      * Compute the set of registers used by a schedule unit
      */
     virtual std::set< schedule_dep::reg_t > get_reg_use(
-        const schedule_unit *unit);
+        const schedule_unit *unit) const;
     /**
      * Compute the set of registers used by a schedule unit and
      * which are necessarily destroyed by it (ie last use).
@@ -97,7 +97,7 @@ class schedule_dag
      *       only use. This is an underapproximation
      */
     virtual std::set< schedule_dep::reg_t > get_reg_destroy(
-        const schedule_unit *unit);
+        const schedule_unit *unit) const;
     /**
      * Compute the set of registers used by a schedule unit and
      * which are necessarily destroyed by it (ie last use).
@@ -106,7 +106,7 @@ class schedule_dag
      *       and is thus exact but more expensive
      */
     virtual std::set< schedule_dep::reg_t > get_reg_destroy_exact(
-        const schedule_unit *unit);
+        const schedule_unit *unit) const;
     /**
      * Compute the set of registers used by a schedule unit and
      * which are necessarily not destroyed by it (ie not last use).
@@ -115,7 +115,7 @@ class schedule_dag
      *       and is thus exact but more expensive
      */
     virtual std::set< schedule_dep::reg_t > get_reg_dont_destroy_exact(
-        const schedule_unit *unit);
+        const schedule_unit *unit) const;
 
     /**
      * Fuse two units by removing them from the graph and replacing
@@ -142,6 +142,11 @@ class schedule_dag
      */
     virtual void collapse_subgraph(const std::set< const schedule_unit * >& units,
         const schedule_unit *new_unit);
+
+    /**
+     * Replace a specified node by another.
+     */
+    virtual void replace_unit(const schedule_unit *old, const schedule_unit *new_unit);
 
     /**
      * Check all the predecessors dep of a node for data redundancies
