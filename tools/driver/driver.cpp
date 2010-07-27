@@ -614,7 +614,9 @@ int __main(int argc, char **argv)
     pasched::basic_status status;
     pipeline.transform(dag, sched, chain, status);
     
-    #else
+    #endif
+
+    #if 1
 
     pasched::transformation_pipeline pipeline;
     pasched::transformation_pipeline snd_stage_pipe;
@@ -639,13 +641,13 @@ int __main(int argc, char **argv)
     snd_stage_pipe.add_stage(new pasched::split_merge_branch_units);
 
     #if 1
-    pasched::basic_list_scheduler basic_sched;
+    pasched::simple_rp_scheduler basic_sched;
     pasched::mris_ilp_scheduler sched(&basic_sched, 0, false);
     #elif 1
-    pasched::basic_list_scheduler basic_sched;
+    pasched::simple_rp_scheduler basic_sched;
     pasched::exp_scheduler sched(&basic_sched, 1000, true);
     #else
-    pasched::basic_list_scheduler sched;
+    pasched::simple_rp_scheduler sched;
     #endif
     pasched::generic_schedule_chain chain;
     pasched::basic_status status;

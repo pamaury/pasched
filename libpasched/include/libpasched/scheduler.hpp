@@ -19,11 +19,27 @@ class scheduler
     protected:
 };
 
-class basic_list_scheduler : public pasched::scheduler
+/**
+ * Random scheduler
+ * (random apply to quality, the scheduler is perfectly deterministic :))
+ */
+class rand_scheduler : public pasched::scheduler
 {
     public:
-    basic_list_scheduler();
-    virtual ~basic_list_scheduler();
+    rand_scheduler();
+    virtual ~rand_scheduler();
+
+    virtual void schedule(pasched::schedule_dag& d, pasched::schedule_chain& c) const;
+};
+
+/**
+ * Simple list scheduler that tries to do reduce the register pressure
+ */
+class simple_rp_scheduler : public pasched::scheduler
+{
+    public:
+    simple_rp_scheduler();
+    virtual ~simple_rp_scheduler();
 
     virtual void schedule(pasched::schedule_dag& d, pasched::schedule_chain& c) const;
 };
