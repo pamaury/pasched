@@ -7,6 +7,7 @@
 #include <queue>
 #include <iostream>
 #include <cassert>
+#include <ctime>
 
 namespace PAMAURY_SCHEDULER_NS
 {
@@ -64,6 +65,10 @@ namespace
         const schedule_dag *dag;
         size_t timeout;
         bool verbose;
+        /* for timeout */
+        clock_t clock_start;
+        size_t clock_div;
+        size_t clock_cycle;
         /* [unit_idx_t -> unit] map is dag.get_units() */
         /* [unit -> unit_idx_t] map follows */
         std::map< const schedule_unit *, unit_idx_t > unit_idx_map;
@@ -82,6 +87,10 @@ namespace
         std::vector< unit_idx_t > best_schedule; /* if has_schedule */
         bool proven_optimal; /* if has_schedule */
         exp_status status;
+    };
+
+    struct exp_timeout
+    {
     };
 
     void compute_static_info(const schedule_dag& dag, exp_state& st)
@@ -135,6 +144,33 @@ namespace
         }
     }
 
+    inline void start_timer(exp_state& st)
+    {
+        if(st.timeout == 0)
+            return;
+        /* set the diviser to 100, this will cause the expire check to call clock
+         * only once in 100 times, to avoid too much overhead */
+        st.clock_div = 100;
+        st.clock_cycle = st.clock_div;
+        st.clock_start = clock();
+    }
+
+    inline bool exp_ire(exp_state& st)
+    {
+        if(st.timeout == 0)
+            return false;
+        st.clock_cycle--;
+        if(st.clock_cycle == 0)
+        {
+            st.clock_cycle = st.clock_div;
+            clock_t c = clock();
+            if((c - st.clock_start) >= (CLOCKS_PER_SEC / 1000) * st.timeout)
+                return true;
+        }
+        
+        return false;
+    }
+
     void init_state(exp_state& st)
     {
         /* set global state */
@@ -148,6 +184,8 @@ namespace
         st.unit_dinfo.resize(st.nb_units);
         for(size_t i = 0; i < st.nb_units; i++)
             st.unit_dinfo[i].nb_dep_left = st.unit_sinfo[i].unit_depend.size();
+        /* start timer */
+        start_timer(st);
     }
 
     void dump_schedule(exp_state& st, const std::vector< unit_idx_t >& s, const std::string& prefix)
@@ -158,6 +196,9 @@ namespace
 
     void do_schedule(exp_state& st)
     {
+        /* timer */
+        if(exp_ire(st))
+            throw exp_timeout();
         /* early stop */
         if(st.has_schedule && st.cur_rp >= st.best_rp)
             return;
@@ -257,15 +298,26 @@ namespace
     void exp_schedule(exp_state& st)
     {
         init_state(st);
-        do_schedule(st);
-
-        if(st.verbose)
+        try
         {
-            debug() << "Best schedule(RP=" << st.best_rp << "):\n";
-            dump_schedule(st, st.best_schedule, "  ");
-        }
+            do_schedule(st);
 
-        st.status = status_success;
+            if(st.verbose && st.has_schedule)
+            {
+                debug() << "Best schedule(RP=" << st.best_rp << "):\n";
+                dump_schedule(st, st.best_schedule, "  ");
+            }
+
+            /* status */
+            st.status = status_success;
+        }
+        catch(exp_timeout& et)
+        {
+            if(st.verbose)
+                debug() << "Timeout !\n";
+            /* status */
+            st.status = status_timeout;
+        }
     }
 }
 
@@ -278,7 +330,8 @@ void exp_scheduler::schedule(schedule_dag& dag, schedule_chain& sc) const
     compute_static_info(dag, st);
     exp_schedule(st);
 
-    if(st.status == status_success)
+    if(st.status == status_success ||
+            (st.status == status_timeout && st.has_schedule))
     {
         assert(st.has_schedule && "Success but not valid schedule ?!");
         assert(st.best_schedule.size() == st.nb_units && "Schedule has the wrong size !");

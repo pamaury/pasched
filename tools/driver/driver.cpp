@@ -640,12 +640,12 @@ int __main(int argc, char **argv)
     snd_stage_pipe.add_stage(new pasched::collapse_chains);
     snd_stage_pipe.add_stage(new pasched::split_merge_branch_units);
 
-    #if 1
+    #if 0
     pasched::simple_rp_scheduler basic_sched;
-    pasched::mris_ilp_scheduler sched(&basic_sched, 0, false);
+    pasched::mris_ilp_scheduler sched(&basic_sched, 1000, false);
     #elif 1
     pasched::simple_rp_scheduler basic_sched;
-    pasched::exp_scheduler sched(&basic_sched, 1000, true);
+    pasched::exp_scheduler sched(&basic_sched, 1000, false);
     #else
     pasched::simple_rp_scheduler sched;
     #endif
