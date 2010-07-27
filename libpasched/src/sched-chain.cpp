@@ -1,8 +1,10 @@
 #include "sched-chain.hpp"
 #include "sched-dag.hpp"
+#include "sched-dag-viewer.hpp"
 #include <stdexcept>
 #include <map>
 #include <cassert>
+#include <iostream>
 
 namespace PAMAURY_SCHEDULER_NS
 {

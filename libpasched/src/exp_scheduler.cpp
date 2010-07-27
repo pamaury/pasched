@@ -8,6 +8,9 @@
 #include <iostream>
 #include <cassert>
 #include <ctime>
+#define __STDC_LIMIT_MACROS
+#include <stdint.h>
+#include <string.h>
 
 namespace PAMAURY_SCHEDULER_NS
 {
@@ -23,6 +26,129 @@ exp_scheduler::~exp_scheduler()
 
 namespace
 {
+    struct bitmap
+    {
+        bitmap()
+        {
+        }
+        
+        bitmap(size_t nb_bits)
+        {
+            set_nb_bits(nb_bits);
+        }
+
+        void set_nb_bits(size_t nb_bits)
+        {
+            m_nb_bits = nb_bits;
+            m_nb_chunks = (nb_bits + BITS_PER_CHUNKS - 1) / BITS_PER_CHUNKS;
+            clear();
+        }
+
+        bool operator<(const bitmap& o) const
+        {
+            assert(o.m_nb_bits == m_nb_bits);
+
+            for(int i = m_nb_chunks - 1; i >= 0; i--)
+            {
+                if(m_chunks[i] < o.m_chunks[i])
+                    return true;
+                else if(m_chunks[i] > o.m_chunks[i])
+                    return false;
+            }
+
+            return false;
+        }
+
+        void set_bit(size_t b)
+        {
+            m_chunks[b / BITS_PER_CHUNKS] |= (uintmax_t)1 << (b % BITS_PER_CHUNKS);
+        }
+
+        void clear_bit(size_t b)
+        {
+            m_chunks[b / BITS_PER_CHUNKS] &= ~((uintmax_t)1 << (b % BITS_PER_CHUNKS));
+        }
+
+        void clear()
+        {
+            memset(m_chunks, 0, sizeof m_chunks);
+        }
+
+        void set()
+        {
+            clear();
+            complement();
+        }
+
+        static size_t nbs(uintmax_t n)
+        {
+            size_t cnt = 0;
+            while(n != 0)
+            {
+                cnt += n % 2;
+                n /= 2;
+            }
+            return cnt;
+        }
+
+        size_t nb_bits_set() const
+        {
+            size_t cnt = 0;
+            for(size_t i = 0; i < m_nb_chunks; i++)
+                cnt += nbs(m_chunks[i]);
+            return cnt;
+        }
+
+        size_t nb_bits_cleared() const
+        {
+            return m_nb_bits - nb_bits_set();
+        }
+
+        void complement()
+        {
+            for(size_t i = 0; (i + 1) < m_nb_chunks; i++)
+                m_chunks[i] = ~m_chunks[i];
+            m_chunks[m_nb_chunks - 1] = (~m_chunks[m_nb_chunks - 1]) & ((1 << (m_nb_chunks % BITS_PER_CHUNKS)) - 1);
+        }
+
+        bitmap& operator|=(const bitmap& o)
+        {
+            assert(o.m_nb_bits == m_nb_bits);
+            
+            for(size_t i = 0; i < m_nb_chunks; i++)
+                m_chunks[i] |= o.m_chunks[i];
+        }
+
+        bitmap& operator&=(const bitmap& o)
+        {
+            assert(o.m_nb_bits == m_nb_bits);
+            
+            for(size_t i = 0; i < m_nb_chunks; i++)
+                m_chunks[i] &= o.m_chunks[i];
+        }
+
+        bool operator==(const bitmap& o) const
+        {
+            assert(o.m_nb_bits == m_nb_bits);
+            
+            for(size_t i = 0; i < m_nb_chunks; i++)
+                if(m_chunks[i] != o.m_chunks[i])
+                    return false;
+            return true;
+        }
+
+        bool operator!=(const bitmap& o) const
+        {
+            return !operator==(o);
+        }
+
+        static const size_t MAX_CHUNKS = 10; /* should not be a limit in practise */
+        static const size_t BITS_PER_CHUNKS = sizeof(uintmax_t) * 8;
+        uintmax_t m_chunks[MAX_CHUNKS];
+        size_t m_nb_chunks;
+        size_t m_nb_bits;
+    };
+    
     typedef unsigned short unit_idx_t;
 
     struct exp_live_reg
@@ -59,6 +185,26 @@ namespace
         status_timeout
     };
 
+    struct exp_result
+    {
+        exp_result(bool found, size_t rp = SIZE_MAX)
+            :found_schedule(found), achieved_rp(rp) {}
+        bool found_schedule;
+        /* the RP only consider the subgraph to schedule
+         * and is not a global result */
+        size_t achieved_rp;
+    };
+
+    struct exp_cache_result
+    {
+        exp_cache_result()
+            :res(false) {}
+        exp_cache_result(exp_result r, unit_idx_t best)
+            :res(r), best_unit(best) {}
+        exp_result res;
+        unit_idx_t best_unit;
+    };
+
     struct exp_state
     {
         /* global parameters */
@@ -87,6 +233,10 @@ namespace
         std::vector< unit_idx_t > best_schedule; /* if has_schedule */
         bool proven_optimal; /* if has_schedule */
         exp_status status;
+
+        /* cache */
+        std::map< bitmap, exp_cache_result > cache_mem;
+        bitmap cache_bm;
     };
 
     struct exp_timeout
@@ -186,6 +336,8 @@ namespace
             st.unit_dinfo[i].nb_dep_left = st.unit_sinfo[i].unit_depend.size();
         /* start timer */
         start_timer(st);
+
+        st.cache_bm.set_nb_bits(st.nb_units);
     }
 
     void dump_schedule(exp_state& st, const std::vector< unit_idx_t >& s, const std::string& prefix)
@@ -194,36 +346,70 @@ namespace
             debug() << prefix << st.dag->get_units()[s[i]]->to_string() << "\n";
     }
 
-    void do_schedule(exp_state& st)
+    exp_result do_schedule(exp_state& st)
     {
+        if(st.cache_mem.find(st.cache_bm) != st.cache_mem.end())
+        {
+            //std::cout << "size=" << st.cache_mem.size() << "(" << st.cache_bm.nb_bits_set() << ")\n";
+            exp_cache_result& cc = st.cache_mem[st.cache_bm];
+            /* no schedule that worth it ? */
+            if(!cc.res.found_schedule)
+                return exp_result(false);
+            /* see if it would produce a best result */
+            size_t new_rp = std::max(st.cur_rp, cc.res.achieved_rp);
+            if(st.has_schedule && new_rp >= st.best_rp)
+                /* no */
+                return exp_result(false);
+            /* yes, rebuild schedule from cache */
+            bitmap bm(st.cache_bm);
+            std::vector< unit_idx_t > sched = st.cur_schedule;
+            while(st.cache_mem.find(bm) != st.cache_mem.end())
+            {
+                unit_idx_t unit = st.cache_mem[bm].best_unit;
+                sched.push_back(unit);
+                bm.set_bit(unit);
+            }
+            /* sanity checks */
+            assert(sched.size() == st.nb_units);
+
+            //std::cout << "new RP=" << new_rp << "\n";
+            st.best_rp = new_rp;
+            st.best_schedule = sched;
+
+            return cc.res;
+        }
         /* timer */
         if(exp_ire(st))
             throw exp_timeout();
         /* early stop */
         if(st.has_schedule && st.cur_rp >= st.best_rp)
-            return;
+            return exp_result(false); /* did not found a schedule */
         /* base case: no more schedulable units */
         if(st.schedulable.size() == 0)
         {
             assert(st.live_regs.size() == 0 && "Variables still alive at end of schedule !");
             /* we have a schedule: cool ! */
-            if(st.verbose && false)
+            if(st.verbose)
             {
                 debug() << "New schedule (RP=" << st.cur_rp << "):\n";
                 dump_schedule(st, st.cur_schedule, "  ");
             }
 
             /* ignore poor schedule */
-            if(st.has_schedule && st.cur_rp >= st.best_rp)
-                return;
+            if(!st.has_schedule || st.cur_rp < st.best_rp)
+            {
+                //std::cout << "new RP=" << st.cur_rp << "\n";
+                st.has_schedule = true;
+                st.best_rp = st.cur_rp;
+                st.best_schedule = st.cur_schedule;
+            }
 
-            st.has_schedule = true;
-            st.best_rp = st.cur_rp;
-            st.best_schedule = st.cur_schedule;
-
-            return;
+            /* RP is 0 here */
+            return exp_result(st.has_schedule, 0);
         }
 
+        exp_result res(false);
+        size_t best_unit = SIZE_MAX;
         /* try each schedulable unit */
         for(size_t i = 0; i < st.schedulable.size(); i++)
         {
@@ -256,7 +442,7 @@ namespace
             }
 
             /* compute RP */
-            st.cur_rp = std::max(st.cur_rp, st.live_regs.size() + st.unit_sinfo[unit].irp);
+            size_t inst_rp = st.live_regs.size() + st.unit_sinfo[unit].irp;
 
             /* create regs */
             for(size_t j = 0; j < st.unit_sinfo[unit].reg_create.size(); j++)
@@ -269,7 +455,8 @@ namespace
             }
 
             /* compute RP */
-            st.cur_rp = std::max(st.cur_rp, st.live_regs.size());
+            inst_rp = std::max(inst_rp, st.live_regs.size());
+            st.cur_rp = std::max(st.cur_rp, inst_rp);
 
             /* update deps and release units */
             for(size_t i = 0; i < st.unit_sinfo[unit].unit_release.size(); i++)
@@ -283,8 +470,21 @@ namespace
                     st.schedulable.push_back(rel);
             }
 
+            st.cache_bm.set_bit(unit);
             /* schedule */
-            do_schedule(st);
+            exp_result tmp = do_schedule(st);
+            st.cache_bm.clear_bit(unit);
+
+            if(tmp.found_schedule)
+            {
+                res.found_schedule = true;
+                tmp.achieved_rp = std::max(tmp.achieved_rp, inst_rp);
+                if(tmp.achieved_rp < res.achieved_rp)
+                {
+                    res.achieved_rp = tmp.achieved_rp;
+                    best_unit = unit;
+                }
+            }
 
             /* restore everything */
             st.cur_rp = old_rp;
@@ -293,6 +493,10 @@ namespace
             st.schedulable = old_schedulable;
             st.unit_dinfo = old_dinfo;
         }
+
+        st.cache_mem[st.cache_bm] = exp_cache_result(res, best_unit);
+
+        return res;
     }
 
     void exp_schedule(exp_state& st)
@@ -300,7 +504,7 @@ namespace
         init_state(st);
         try
         {
-            do_schedule(st);
+            exp_result res = do_schedule(st);
 
             if(st.verbose && st.has_schedule)
             {

@@ -77,7 +77,6 @@ endif(HAS_SYMPHONY)
 
 CONFIGURE_FILE(${pasched_SOURCE_DIR}/include/libpasched/config.hpp.cmake ${pasched_SOURCE_DIR}/include/libpasched/config.hpp)
 
-set(CMAKE_BUILD_TYPE Profile)
 set(CMAKE_CXX_FLAGS_PROFILE "-pg -g")
 set(CMAKE_C_FLAGS_PROFILE "-pg -g")
 

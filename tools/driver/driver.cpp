@@ -107,7 +107,7 @@ std::ostream& operator<<(std::ostream& os, const std::vector< T >& v)
 class dag_accumulator : public pasched::transformation
 {
     public:
-    dag_accumulator() {}
+    dag_accumulator(bool do_deep_copy = true):m_deep(do_deep_copy) {}
     virtual ~dag_accumulator() {}
 
     virtual void transform(pasched::schedule_dag& dag, const pasched::scheduler& s, pasched::schedule_chain& c,
@@ -117,8 +117,8 @@ class dag_accumulator : public pasched::transformation
         status.set_modified_graph(false);
         status.set_junction(false);
         status.set_deadlock(false);
-        
-        pasched::schedule_dag *d = dag.deep_dup();
+
+        pasched::schedule_dag *d = m_deep ? dag.deep_dup() : dag.dup();
         /* accumulate */
         m_dag.add_units(d->get_units());
         m_dag.add_dependencies(d->get_deps());
@@ -135,6 +135,7 @@ class dag_accumulator : public pasched::transformation
     /* Little hack here. A transformation is not supposed to keep internal state but here
      * we want to accumulate DAGs scheduled so we keep a mutable var */
     mutable pasched::generic_schedule_dag m_dag;
+    bool m_deep;
 };
 
 class dag_statistics : public pasched::transformation
@@ -621,10 +622,14 @@ int __main(int argc, char **argv)
     pasched::transformation_pipeline pipeline;
     pasched::transformation_pipeline snd_stage_pipe;
     pasched::transformation_loop loop(&snd_stage_pipe);
+    /* don't do deep copy, otherwise, the unit won't have the same address in
+     * the chain and in the DAG ! */
+    dag_accumulator after_unique_accum(false);
     dag_accumulator accumulator;
     dag_statistics statistics;
     trivial_dag_remover remover;
     pipeline.add_stage(new pasched::unique_reg_ids);
+    pipeline.add_stage(&after_unique_accum);
     pipeline.add_stage(&loop);
     pipeline.add_stage(&statistics);
     pipeline.add_stage(&remover);
@@ -643,9 +648,9 @@ int __main(int argc, char **argv)
     #if 0
     pasched::simple_rp_scheduler basic_sched;
     pasched::mris_ilp_scheduler sched(&basic_sched, 1000, false);
-    #elif 0
+    #elif 1
     pasched::simple_rp_scheduler basic_sched;
-    pasched::exp_scheduler sched(&basic_sched, 1000, false);
+    pasched::exp_scheduler sched(&basic_sched, 0000, false);
     #else
     pasched::simple_rp_scheduler sched;
     #endif
@@ -659,12 +664,16 @@ int __main(int argc, char **argv)
     bool ok = chain.check_against_dag(*dag_copy);
     if(!ok)
         throw std::runtime_error("invalid schedule");
-    std::cout << "RP=" << chain.compute_rp_against_dag(*dag_copy) << "\n";
+    /* we don't want to run it on the initial graph because it will be a disaster
+     * if the reg id have not been uniqued. That why we capture the dag just after
+     * reg renaming */
+    std::cout << "RP=" << chain.compute_rp_against_dag(after_unique_accum.get_dag()) << "\n";
     delete dag_copy;
+    //debug_view_dag(after_unique_accum.get_dag());
     //debug_view_chain(chain);
     #endif
 
-    #if 1
+    #if 0
     if(pasched::time_stat::get_time_stat_count() != 0)
     {
         std::cout << "Time statistics:\n";

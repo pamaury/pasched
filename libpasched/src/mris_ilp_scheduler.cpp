@@ -502,8 +502,8 @@ void mris_ilp_scheduler::schedule(schedule_dag& dag, schedule_chain& sc) const
         #endif
 
         glp_term_out(m_verbose ? GLP_ON : GLP_OFF);
-        glp_write_lp(p, 0, "test.lp");
-        glp_write_mps(p, GLP_MPS_FILE, 0, "test.mps");
+        //glp_write_lp(p, 0, "test.lp");
+        //glp_write_mps(p, GLP_MPS_FILE, 0, "test.mps");
 
         #ifdef SOLVE_WITH_GLPK
 
