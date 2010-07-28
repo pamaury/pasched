@@ -54,6 +54,24 @@ size_t schedule_chain::compute_rp_against_dag(const schedule_dag& dag) const
     std::map< schedule_dep::reg_t, size_t > nb_use_left;
     size_t rp = 0;
 
+    /* if the chain is only a subgraph of the DAG, handle it */
+    if(get_unit_count() < dag.get_units().size())
+    {
+        schedule_dag *cpy = dag.dup();
+        for(size_t u = 0; u < dag.get_units().size(); u++)
+        {
+            bool ok = false;
+            for(size_t i = 0; i < get_unit_count(); i++)
+                ok = ok || get_unit_at(i) == dag.get_units()[u];
+            if(!ok)
+                cpy->remove_unit(dag.get_units()[u]);
+        }
+        
+        size_t rp = compute_rp_against_dag(*cpy);
+        delete cpy;
+        return rp;
+    }
+
     for(size_t i = 0; i < get_unit_count(); i++)
     {
         const schedule_unit *unit = get_unit_at(i);

@@ -11,6 +11,8 @@
 #include <queue>
 #include <iostream>
 #include <cassert>
+#include <fstream>
+#include <sstream>
 
 #ifdef HAS_SYMPHONY
 /* #define SOLVE_WITH_SYMPHONY */
@@ -60,7 +62,7 @@ struct instr_regs_info_t
 
 void mris_ilp_scheduler::schedule(schedule_dag& dag, schedule_chain& sc) const
 {
-    #define ILP_ERROR(msg) goto Lerror
+    #define ILP_ERROR(msg) { std::cout << "ILP_ERROR: " << msg << "\n"; goto Lerror; }
     
     {
         char name[32];
@@ -500,10 +502,42 @@ void mris_ilp_scheduler::schedule(schedule_dag& dag, schedule_chain& sc) const
             }
         }
         #endif
+        
+        #if 0
+        std::ifstream fin("test.sol");
+        if(fin)
+        {
+            int r, c;
+            std::string line;
+            std::getline(fin, line);
+            std::istringstream iss(line);
+            iss >> r >> c;
+            assert(r == glp_get_num_rows(p) && c == glp_get_num_cols(p));
+            int count = 1 + r;
+            while(count-- > 0)
+                std::getline(fin, line);
+            std::cout << "zcol=" << z_col << "\n";
+            for(int i = 0; i < c; i++)
+            {
+                std::getline(fin, line);
+                std::istringstream iss(line);
+                int val;
+                iss >> val;
+                glp_set_col_bnds(p, i + 1, GLP_FX, val, val);
+            }
+            fin.close();
+        }
+        #endif
 
         glp_term_out(m_verbose ? GLP_ON : GLP_OFF);
         //glp_write_lp(p, 0, "test.lp");
         //glp_write_mps(p, GLP_MPS_FILE, 0, "test.mps");
+
+        #if 1
+        glp_read_mip(p, "test.sol");
+        #undef SOLVE_WITH_GLPK
+        #undef SOLVE_WITH_SYMPHONY
+        #endif
 
         #ifdef SOLVE_WITH_GLPK
 
@@ -561,10 +595,10 @@ void mris_ilp_scheduler::schedule(schedule_dag& dag, schedule_chain& sc) const
         }
         sym_close_environment(env);
         #else
-        #error You need to specify a solve !
+        #warning You need to specify a solve !
         #endif
 
-        //glp_print_mip(p, "test.sol");
+        //glp_write_mip(p, "test.sol");
 
         /* retrieve solution */
         std::vector< unsigned > placement;
@@ -596,12 +630,13 @@ void mris_ilp_scheduler::schedule(schedule_dag& dag, schedule_chain& sc) const
                 if(val != 1)
                     ILP_ERROR("ILP solver went mad ! (1)");
             }
+            /* check already scheduled instruction should have been scheduled before ! */
             it = to_be_placed.begin();
             for(; it != to_be_placed.end(); ++it)
             {
                 unsigned val = glp_mip_col_val(p, w_u_v_col[cur_inst][*it]);
                 if(cur_inst != *it && val != 1)
-                    ILP_ERROR("ILP solver went mad ! (1)");
+                    ILP_ERROR("ILP solver went mad ! (2)");
             }
             /* add instruction */
             //std::cout << "  Emit: " << units[cur_inst]->to_string() << "\n";

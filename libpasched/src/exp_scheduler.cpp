@@ -1,4 +1,5 @@
 #include "scheduler.hpp"
+#include "sched-dag-viewer.hpp"
 #include "tools.hpp"
 #include <cstdlib>
 #include <cstdio>
@@ -11,6 +12,8 @@
 #define __STDC_LIMIT_MACROS
 #include <stdint.h>
 #include <string.h>
+
+#undef ENABLE_SCHED_AUTO_CHECK_RP
 
 namespace PAMAURY_SCHEDULER_NS
 {
@@ -348,7 +351,17 @@ namespace
 
     exp_result do_schedule(exp_state& st)
     {
-        if(st.cache_mem.find(st.cache_bm) != st.cache_mem.end())
+        assert(st.cache_bm.nb_bits_set() == st.cur_schedule.size() && "Inconsistent bitmap");
+        /* timer */
+        if(exp_ire(st))
+            throw exp_timeout();
+        /* early stop */
+        #if 0
+        if(st.has_schedule && st.cur_rp >= st.best_rp)
+            return exp_result(false); /* did not found a schedule */
+        #endif
+        if(st.cache_mem.find(st.cache_bm) != st.cache_mem.end()
+                && st.cache_mem[st.cache_bm].res.found_schedule)
         {
             //std::cout << "size=" << st.cache_mem.size() << "(" << st.cache_bm.nb_bits_set() << ")\n";
             exp_cache_result& cc = st.cache_mem[st.cache_bm];
@@ -357,12 +370,14 @@ namespace
                 return exp_result(false);
             /* see if it would produce a best result */
             size_t new_rp = std::max(st.cur_rp, cc.res.achieved_rp);
+
             if(st.has_schedule && new_rp >= st.best_rp)
                 /* no */
-                return exp_result(false);
+                return cc.res;
             /* yes, rebuild schedule from cache */
             bitmap bm(st.cache_bm);
             std::vector< unit_idx_t > sched = st.cur_schedule;
+            
             while(st.cache_mem.find(bm) != st.cache_mem.end())
             {
                 unit_idx_t unit = st.cache_mem[bm].best_unit;
@@ -370,20 +385,32 @@ namespace
                 bm.set_bit(unit);
             }
             /* sanity checks */
+            #ifdef ENABLE_SCHED_AUTO_CHECK_RP
+            generic_schedule_chain chain;
+            for(size_t i = 0; i < sched.size(); i++)
+                chain.append_unit(st.dag->get_units()[sched[i]]);
             assert(sched.size() == st.nb_units);
+            if(chain.compute_rp_against_dag(*st.dag) != new_rp)
+            {
+                std::cout << "claimed: " << new_rp << "\n";
+                std::cout << "actual " << chain.compute_rp_against_dag(*st.dag) << "\n";
+                assert(false);
+            }
+            #endif
 
-            //std::cout << "new RP=" << new_rp << "\n";
+            std::cout << "cc new RP=" << new_rp << "\n";
+
+            #ifdef ENABLE_SCHED_AUTO_CHECK_RP
+            if(st.has_schedule && new_rp >= st.best_rp)
+                /* no */
+                return cc.res;
+            #endif
             st.best_rp = new_rp;
             st.best_schedule = sched;
 
             return cc.res;
         }
-        /* timer */
-        if(exp_ire(st))
-            throw exp_timeout();
-        /* early stop */
-        if(st.has_schedule && st.cur_rp >= st.best_rp)
-            return exp_result(false); /* did not found a schedule */
+
         /* base case: no more schedulable units */
         if(st.schedulable.size() == 0)
         {
@@ -398,10 +425,25 @@ namespace
             /* ignore poor schedule */
             if(!st.has_schedule || st.cur_rp < st.best_rp)
             {
-                //std::cout << "new RP=" << st.cur_rp << "\n";
+                std::cout << "new RP=" << st.cur_rp << "\n";
                 st.has_schedule = true;
                 st.best_rp = st.cur_rp;
                 st.best_schedule = st.cur_schedule;
+
+                #ifdef ENABLE_SCHED_AUTO_CHECK_RP
+                {
+                    generic_schedule_chain chain;
+                    for(size_t i = 0; i < st.best_schedule.size(); i++)
+                        chain.append_unit(st.dag->get_units()[st.best_schedule[i]]);
+                    assert(chain.get_unit_count() == st.nb_units);
+                    if(chain.compute_rp_against_dag(*st.dag) != st.best_rp)
+                    {
+                        std::cout << "claimed: " << st.best_rp << "\n";
+                        std::cout << "actual: " << chain.compute_rp_against_dag(*st.dag) << "\n";
+                        assert(false);
+                    }
+                }
+                #endif
             }
 
             /* RP is 0 here */
@@ -479,7 +521,8 @@ namespace
             {
                 res.found_schedule = true;
                 tmp.achieved_rp = std::max(tmp.achieved_rp, inst_rp);
-                if(tmp.achieved_rp < res.achieved_rp)
+                
+                if(!res.found_schedule || tmp.achieved_rp < res.achieved_rp)
                 {
                     res.achieved_rp = tmp.achieved_rp;
                     best_unit = unit;
@@ -505,7 +548,6 @@ namespace
         try
         {
             exp_result res = do_schedule(st);
-
             if(st.verbose && st.has_schedule)
             {
                 debug() << "Best schedule(RP=" << st.best_rp << "):\n";
