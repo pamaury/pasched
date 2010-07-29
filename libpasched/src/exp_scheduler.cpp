@@ -157,24 +157,34 @@ namespace
         status_timeout
     };
 
-    struct exp_result
-    {
-        exp_result(bool found, size_t rp = SIZE_MAX)
-            :found_schedule(found), achieved_rp(rp) {}
-        bool found_schedule;
-        /* the RP only consider the subgraph to schedule
-         * and is not a global result */
-        size_t achieved_rp;
-    };
-
     struct exp_cache_result
     {
         exp_cache_result()
-            :res(false) {}
-        exp_cache_result(exp_result r, unit_idx_t best)
-            :res(r), best_unit(best) {}
-        exp_result res;
-        unit_idx_t best_unit;
+        {
+            fw.valid = false;
+            bw.valid = false;
+        }
+
+        /* NOTE: forward and backward parts are compeltely independent */
+        struct
+        {
+            /* does it contain valid forward info ? */
+            bool valid;
+            /* best achieved RP for the scheduled graph (forward view) */
+            size_t achieved_rp;
+        }fw;
+        
+        struct
+        {
+            /* does it contain valid backward info ? */
+            bool valid;
+            /* is the cached result optimal ? */
+            bool optimal;
+            /* best achieved RP */
+            size_t achieved_rp;
+            /* best unit to pick */
+            size_t best_unit;
+        }bw;
     };
 
     struct exp_state
@@ -318,38 +328,47 @@ namespace
             debug() << prefix << st.dag->get_units()[s[i]]->to_string() << "\n";
     }
 
-    exp_result do_schedule(exp_state& st)
+    void do_schedule(exp_state& st)
     {
         assert(st.cache_bm.nb_bits_set() == st.cur_schedule.size() && "Inconsistent bitmap");
         /* timer */
         if(exp_ire(st))
             throw exp_timeout();
-        /* early stop */
-        #if 0
+        /* cache entry */
+        exp_cache_result& cc = st.cache_mem[st.cache_bm];
+        /* if we are in the same situation as before but without a best RP, stop now */
+        if(cc.fw.valid && cc.fw.achieved_rp <= st.cur_rp)
+            return;
+        cc.fw.valid = true;
+        cc.fw.achieved_rp = st.cur_rp;
+        /* if the current RP is already higher than the best, stop now */
         if(st.has_schedule && st.cur_rp >= st.best_rp)
-            return exp_result(false); /* did not found a schedule but do not cache result ! */
-        #endif
-        if(st.cache_mem.find(st.cache_bm) != st.cache_mem.end()
-                && st.cache_mem[st.cache_bm].res.found_schedule)
+            return;
+        /* do we have some cached result ? */
+        if(cc.bw.valid)
         {
-            //std::cout << "size=" << st.cache_mem.size() << "(" << st.cache_bm.nb_bits_set() << ")\n";
-            exp_cache_result& cc = st.cache_mem[st.cache_bm];
-            /* no schedule that worth it ? */
-            if(!cc.res.found_schedule)
-                return exp_result(false);
             /* see if it would produce a best result */
-            size_t new_rp = std::max(st.cur_rp, cc.res.achieved_rp);
+            size_t new_rp = std::max(st.cur_rp, cc.bw.achieved_rp);
 
             if(st.has_schedule && new_rp >= st.best_rp)
-                /* no */
-                return cc.res;
-            /* yes, rebuild schedule from cache */
+            {
+                /* no, then if the result is optimal, just stop */
+                if(cc.bw.optimal)
+                    return;
+                /* no, but the backward result is not optimal so let's try to improve it */
+                goto Lcompute;
+            }
+            /* yes, then rebuild a schedule from cache */
             bitmap bm(st.cache_bm);
             std::vector< unit_idx_t > sched = st.cur_schedule;
-            
-            while(st.cache_mem.find(bm) != st.cache_mem.end())
+
+            /* note: if the result has been cached for st.cache_bm,
+             *       then it must have been for all the subsequent subgraph,
+             *       so there is not need to check */
+            while(sched.size() < st.nb_units)
             {
-                unit_idx_t unit = st.cache_mem[bm].best_unit;
+                assert(st.cache_mem[bm].bw.valid && "Cached result with non-cached best path ?");
+                unit_idx_t unit = st.cache_mem[bm].bw.best_unit;
                 sched.push_back(unit);
                 bm.set_bit(unit);
             }
@@ -367,79 +386,68 @@ namespace
             }
             #endif
 
-            std::cout << "cc new RP=" << new_rp << "\n";
+            //std::cout << "cc new RP=" << new_rp << "\n";
 
-            #ifdef ENABLE_SCHED_AUTO_CHECK_RP
-            if(st.has_schedule && new_rp >= st.best_rp)
-                /* no */
-                return cc.res;
-            #endif
+            /* update best */
             st.best_rp = new_rp;
             st.best_schedule = sched;
-
-            return cc.res;
+            
+            /* stop */
+            return;
         }
 
+        /* either we have no cached result or not good enough cache, so let's compute something */
+        Lcompute:
+        
         /* base case: no more schedulable units */
         if(st.schedulable.size() == 0)
         {
             assert(st.live_regs.size() == 0 && "Variables still alive at end of schedule !");
-            /* we have a schedule: cool ! */
-            if(st.verbose)
-            {
-                debug() << "New schedule (RP=" << st.cur_rp << "):\n";
-                dump_schedule(st, st.cur_schedule, "  ");
-            }
 
-            /* ignore poor schedule */
-            if(!st.has_schedule || st.cur_rp < st.best_rp)
-            {
-                std::cout << "new RP=" << st.cur_rp << "\n";
-                st.has_schedule = true;
-                st.best_rp = st.cur_rp;
-                st.best_schedule = st.cur_schedule;
+            /* if we are there, we should always improve */
+            assert((!st.has_schedule || st.cur_rp < st.best_rp) && "Why the hell are we there if we do not improve best ?");
+            
+            //std::cout << "new RP=" << st.cur_rp << "\n";
+            /* update best */
+            st.has_schedule = true;
+            st.best_rp = st.cur_rp;
+            st.best_schedule = st.cur_schedule;
 
-                #ifdef ENABLE_SCHED_AUTO_CHECK_RP
+            #ifdef ENABLE_SCHED_AUTO_CHECK_RP
+            {
+                generic_schedule_chain chain;
+                for(size_t i = 0; i < st.best_schedule.size(); i++)
+                    chain.append_unit(st.dag->get_units()[st.best_schedule[i]]);
+                assert(chain.get_unit_count() == st.nb_units);
+                if(chain.compute_rp_against_dag(*st.dag) != st.best_rp)
                 {
-                    generic_schedule_chain chain;
-                    for(size_t i = 0; i < st.best_schedule.size(); i++)
-                        chain.append_unit(st.dag->get_units()[st.best_schedule[i]]);
-                    assert(chain.get_unit_count() == st.nb_units);
-                    if(chain.compute_rp_against_dag(*st.dag) != st.best_rp)
-                    {
-                        std::cout << "claimed: " << st.best_rp << "\n";
-                        std::cout << "actual: " << chain.compute_rp_against_dag(*st.dag) << "\n";
-                        assert(false);
-                    }
+                    std::cout << "claimed: " << st.best_rp << "\n";
+                    std::cout << "actual: " << chain.compute_rp_against_dag(*st.dag) << "\n";
+                    assert(false);
                 }
-                #endif
             }
+            #endif
 
-            /* RP is 0 here */
-            return exp_result(st.has_schedule, 0);
+            /* no cached for leaves */
+            return;
         }
 
-        #define OPTIMIZE_SAVE_RESTORE
+        /* normal case: there are things to schedule */
 
-        exp_result res(false);
-        size_t best_unit = SIZE_MAX;
+        cc.bw.valid = false;
+        cc.bw.optimal = true;
+        cc.bw.best_unit = SIZE_MAX;
+        cc.bw.achieved_rp = SIZE_MAX;
         /* try each schedulable unit */
         for(size_t i = 0; i < st.schedulable.size(); i++)
         {
-            #ifndef OPTIMIZE_SAVE_RESTORE
-            /* save live regs */
-            std::map< schedule_dep::reg_t, exp_live_reg > old_live = st.live_regs;
-            /* save schedulable */
-            std::vector< unit_idx_t > old_schedulable = st.schedulable;
-            /* save dynamic info */
-            std::vector< exp_dynamic_unit_info > old_dinfo = st.unit_dinfo;
-            #endif
             /* save RP */
             size_t old_rp = st.cur_rp;
 
             /* remove unit from schedulables */
             size_t unit = st.schedulable[i];
             unordered_vector_remove(i, st.schedulable);
+            /* and add it to current schedule */
             st.cur_schedule.push_back(unit);
 
             /* update regs and kill regs */
@@ -485,20 +493,26 @@ namespace
                     st.schedulable.push_back(rel);
             }
 
+            /* mark unit as scheduled */
             st.cache_bm.set_bit(unit);
             /* schedule */
-            exp_result tmp = do_schedule(st);
+            do_schedule(st);
+            /* get caching state */
+            const exp_cache_result& rec_cc = st.cache_mem[st.cache_bm];
+            /* mark unit as scheduled */
             st.cache_bm.clear_bit(unit);
-
-            if(tmp.found_schedule)
+            /* don't bother if it's not valid */
+            if(rec_cc.bw.valid)
             {
-                res.found_schedule = true;
-                tmp.achieved_rp = std::max(tmp.achieved_rp, inst_rp);
-                
-                if(!res.found_schedule || tmp.achieved_rp < res.achieved_rp)
+                /* now we have something valid to cache */
+                cc.bw.valid = true;
+                /* optimality is not easy to get */
+                cc.bw.optimal = cc.bw.optimal && rec_cc.bw.optimal;
+                /* is it better than current ? */
+                if(rec_cc.bw.achieved_rp < cc.bw.achieved_rp)
                 {
-                    res.achieved_rp = tmp.achieved_rp;
-                    best_unit = unit;
+                    cc.bw.achieved_rp = rec_cc.bw.achieved_rp;
+                    cc.bw.best_unit = unit;
                 }
             }
 
@@ -506,11 +520,6 @@ namespace
             st.cur_rp = old_rp;
             st.cur_schedule.pop_back();
             
-            #ifndef OPTIMIZE_SAVE_RESTORE
-            st.live_regs = old_live;
-            st.schedulable = old_schedulable;
-            st.unit_dinfo = old_dinfo;
-            #else
             size_t to_remove = 0;
             /* deupdate deps and unrelease units */
             for(size_t j = 0; j < st.unit_sinfo[unit].unit_release.size(); j++)
@@ -544,12 +553,21 @@ namespace
                 st.live_regs[reg].nb_use_left++;
                 st.live_regs[reg].id = reg;
             }
-            #endif
+
+            /* At this point, we have an opportunity to stop
+             * Indeed, if the current register pressure is already higher than the best,
+             * we can stop now and mark the caching as suboptimal. If it happens than we
+             * need a better one later on, then we'll continue the computation
+             *
+             * note: this is just a speedup trick because it will already happen when the recurse
+             *       call is done we will avoid lots of computations
+             *
+             * Of course, don't do it if this is the last schedulable unit ! */
+            if(st.cur_rp >= st.best_rp && (i + 1) < st.schedulable.size())
+            {
+                cc.bw.optimal = false;
+            }
         }
-
-        st.cache_mem[st.cache_bm] = exp_cache_result(res, best_unit);
-
-        return res;
     }
 
     void exp_schedule(exp_state& st)
@@ -557,13 +575,7 @@ namespace
         init_state(st);
         try
         {
-            exp_result res = do_schedule(st);
-            if(st.verbose && st.has_schedule)
-            {
-                debug() << "Best schedule(RP=" << st.best_rp << "):\n";
-                dump_schedule(st, st.best_schedule, "  ");
-            }
-
+            do_schedule(st);
             /* status */
             st.status = status_success;
         }
