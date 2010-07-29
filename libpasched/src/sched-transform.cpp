@@ -1249,6 +1249,7 @@ void break_symmetrical_branch_merge::transform(schedule_dag& dag, const schedule
     
     for(size_t u = 0; u < dag.get_units().size(); u++)
     {
+        #if 0
         const schedule_unit *unit = dag.get_units()[u];
         std::set< const schedule_unit * > preds_order_succs;
         std::set< const schedule_unit * > preds_preds;
@@ -1305,6 +1306,120 @@ void break_symmetrical_branch_merge::transform(schedule_dag& dag, const schedule
             d.set_kind(schedule_dep::order_dep);
             to_add.push_back(d);
         }
+        #endif
+
+        /**
+         * Really simple and special case of symmetrical situation:
+         * One dominator node U
+         * Which has a subset V_1, ..., V_n of its children
+         * One collector node W
+         * With conditions:
+         * 1) Each child V_i must only have W as successor and U as predecessor
+         * 2) The number of data edges between U and V_i must not depend on i (constant)
+         * 3) Each register created by U must
+         *    a) either be used by all V_i
+         *    b) either be used by only one V_i
+         * 4) The number of register created by V_i must not depend on i (constant)
+         */
+        const schedule_unit *unit = dag.get_units()[u];
+        std::set< const schedule_unit * > succs = dag.get_reachable(unit, schedule_dag::rf_follow_succs);
+        std::set< const schedule_unit * >::iterator it;
+
+        /* filter out nodes with several predecessors and/or successors */
+        /* compute set of successors' successors at the same time */
+        std::map< const schedule_unit *, std::set< const schedule_unit * > > groups;
+        std::map< const schedule_unit *, std::set< const schedule_unit * > >::iterator git;
+        {
+            std::vector< const schedule_unit * > to_remove;
+            for(it = succs.begin(); it != succs.end(); ++it)
+            {
+                if(dag.get_reachable(*it, schedule_dag::rf_follow_preds).size() != 1)
+                {
+                    to_remove.push_back(*it);
+                    continue;
+                }
+                if(dag.get_reachable(*it, schedule_dag::rf_follow_succs).size() != 1)
+                {
+                    to_remove.push_back(*it);
+                    continue;
+                }
+
+                /* pick the first successor because they are all the same */
+                groups[dag.get_succs(*it)[0].to()].insert(*it);
+            }
+            for(size_t i = 0; i < to_remove.size(); i++)
+                succs.erase(to_remove[i]);
+        }
+        /* check if it still worth it */
+        if(succs.size() < 2)
+            goto Lnext;
+
+        /* process each group */
+        for(git = groups.begin(); git != groups.end(); ++git)
+        {
+            std::set< const schedule_unit * > grp = git->second;
+            const schedule_unit *collector = git->first;
+            /* group must not be trivial */
+            if(grp.size() <= 1)
+                continue;
+            /* Check conditions 2) and 4) */
+            size_t nb_input_regs = 0;
+            size_t nb_ouput_regs = 0;
+            for(it = grp.begin(); it != grp.end(); ++it)
+            {
+                size_t cnt = dag.get_reg_use(*it).size();
+                if(it == grp.begin())
+                    nb_input_regs = cnt;
+                else if(nb_input_regs != cnt)
+                    goto Lnext_group;
+
+                cnt = dag.get_reg_create(*it).size();
+                if(it == grp.begin())
+                    nb_ouput_regs = cnt;
+                else if(nb_ouput_regs != cnt)
+                    goto Lnext_group;
+            }
+            /* Check condition 3) */
+            {
+                std::map< schedule_dep::reg_t, size_t > reg_use_count;
+                std::map< schedule_dep::reg_t, size_t >::iterator ruc_it;
+                for(it = grp.begin(); it != grp.end(); ++it)
+                {
+                    std::set< schedule_dep::reg_t > use = dag.get_reg_use(*it);
+                    std::set< schedule_dep::reg_t >::iterator rit;
+                    for(rit = use.begin(); rit != use.end(); ++rit)
+                        reg_use_count[*rit]++;
+                }
+
+                for(ruc_it = reg_use_count.begin(); ruc_it != reg_use_count.end(); ++ruc_it)
+                {
+                    /* Number of use must either be 1 or grp.size() */
+                    if(ruc_it->second != 1 && ruc_it->second != grp.size())
+                        goto Lnext_group;
+                }
+            }
+
+            debug() << "Found group:\n";
+            debug() << "  Dominator: " << unit->to_string() << "\n";
+            for(it = grp.begin(); it != grp.end(); ++it)
+                debug() << "    Node: " << (*it)->to_string() << "\n";
+            debug() << "  Collector: " << collector->to_string() << "\n";
+
+            /* Add order deps */
+            {
+                const schedule_unit *last = 0;
+                for(it = grp.begin(); it != grp.end(); ++it)
+                {
+                    if(last != 0)
+                        to_add.push_back(schedule_dep(last, *it, schedule_dep::order_dep));
+                    last = *it;
+                }
+            }
+
+            Lnext_group:
+            continue;
+        }
+        
 
         Lnext:
         continue;

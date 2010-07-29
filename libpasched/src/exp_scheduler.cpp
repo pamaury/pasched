@@ -13,8 +13,6 @@
 #include <stdint.h>
 #include <string.h>
 
-#undef ENABLE_SCHED_AUTO_CHECK_RP
-
 namespace PAMAURY_SCHEDULER_NS
 {
 
@@ -77,12 +75,6 @@ namespace
             memset(m_chunks, 0, sizeof m_chunks);
         }
 
-        void set()
-        {
-            clear();
-            complement();
-        }
-
         static size_t nbs(uintmax_t n)
         {
             size_t cnt = 0;
@@ -105,29 +97,6 @@ namespace
         size_t nb_bits_cleared() const
         {
             return m_nb_bits - nb_bits_set();
-        }
-
-        void complement()
-        {
-            for(size_t i = 0; (i + 1) < m_nb_chunks; i++)
-                m_chunks[i] = ~m_chunks[i];
-            m_chunks[m_nb_chunks - 1] = (~m_chunks[m_nb_chunks - 1]) & ((1 << (m_nb_chunks % BITS_PER_CHUNKS)) - 1);
-        }
-
-        bitmap& operator|=(const bitmap& o)
-        {
-            assert(o.m_nb_bits == m_nb_bits);
-            
-            for(size_t i = 0; i < m_nb_chunks; i++)
-                m_chunks[i] |= o.m_chunks[i];
-        }
-
-        bitmap& operator&=(const bitmap& o)
-        {
-            assert(o.m_nb_bits == m_nb_bits);
-            
-            for(size_t i = 0; i < m_nb_chunks; i++)
-                m_chunks[i] &= o.m_chunks[i];
         }
 
         bool operator==(const bitmap& o) const
@@ -358,7 +327,7 @@ namespace
         /* early stop */
         #if 0
         if(st.has_schedule && st.cur_rp >= st.best_rp)
-            return exp_result(false); /* did not found a schedule */
+            return exp_result(false); /* did not found a schedule but do not cache result ! */
         #endif
         if(st.cache_mem.find(st.cache_bm) != st.cache_mem.end()
                 && st.cache_mem[st.cache_bm].res.found_schedule)
@@ -450,17 +419,21 @@ namespace
             return exp_result(st.has_schedule, 0);
         }
 
+        #define OPTIMIZE_SAVE_RESTORE
+
         exp_result res(false);
         size_t best_unit = SIZE_MAX;
         /* try each schedulable unit */
         for(size_t i = 0; i < st.schedulable.size(); i++)
         {
+            #ifndef OPTIMIZE_SAVE_RESTORE
             /* save live regs */
             std::map< schedule_dep::reg_t, exp_live_reg > old_live = st.live_regs;
             /* save schedulable */
             std::vector< unit_idx_t > old_schedulable = st.schedulable;
             /* save dynamic info */
             std::vector< exp_dynamic_unit_info > old_dinfo = st.unit_dinfo;
+            #endif
             /* save RP */
             size_t old_rp = st.cur_rp;
 
@@ -501,9 +474,9 @@ namespace
             st.cur_rp = std::max(st.cur_rp, inst_rp);
 
             /* update deps and release units */
-            for(size_t i = 0; i < st.unit_sinfo[unit].unit_release.size(); i++)
+            for(size_t j = 0; j < st.unit_sinfo[unit].unit_release.size(); j++)
             {
-                unit_idx_t rel = st.unit_sinfo[unit].unit_release[i];
+                unit_idx_t rel = st.unit_sinfo[unit].unit_release[j];
                 assert(st.unit_dinfo[rel].nb_dep_left > 0 && "Released unit has no dependencies left !");
 
                 st.unit_dinfo[rel].nb_dep_left--;
@@ -532,9 +505,46 @@ namespace
             /* restore everything */
             st.cur_rp = old_rp;
             st.cur_schedule.pop_back();
+            
+            #ifndef OPTIMIZE_SAVE_RESTORE
             st.live_regs = old_live;
             st.schedulable = old_schedulable;
             st.unit_dinfo = old_dinfo;
+            #else
+            size_t to_remove = 0;
+            /* deupdate deps and unrelease units */
+            for(size_t j = 0; j < st.unit_sinfo[unit].unit_release.size(); j++)
+            {
+                unit_idx_t rel = st.unit_sinfo[unit].unit_release[j];
+
+                if((++st.unit_dinfo[rel].nb_dep_left) == 1)
+                    to_remove++;
+            }
+            /* WARNING: you enter dangerous waters here, this
+             *          highly depends on the semantics of
+             *          unordered_vector_remove and how st.schedulable
+             *          is updated */
+            assert(st.schedulable.size() >= to_remove);
+            st.schedulable.resize(st.schedulable.size() + 1 - to_remove);
+            st.schedulable[st.schedulable.size() - 1] = st.schedulable[i];
+            st.schedulable[i] = unit;
+
+            /* uncreate regs */
+            for(size_t j = 0; j < st.unit_sinfo[unit].reg_create.size(); j++)
+            {
+                schedule_dep::reg_t reg = st.unit_sinfo[unit].reg_create[j];
+                assert(st.live_regs.find(reg) != st.live_regs.end() && "Created variable is not alive !");
+                st.live_regs.erase(reg);
+            }
+
+            /* deupdate regs and unkill regs */
+            for(size_t j = 0; j < st.unit_sinfo[unit].reg_use.size(); j++)
+            {
+                schedule_dep::reg_t reg = st.unit_sinfo[unit].reg_use[j];
+                st.live_regs[reg].nb_use_left++;
+                st.live_regs[reg].id = reg;
+            }
+            #endif
         }
 
         st.cache_mem[st.cache_bm] = exp_cache_result(res, best_unit);

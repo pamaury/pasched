@@ -533,7 +533,7 @@ void mris_ilp_scheduler::schedule(schedule_dag& dag, schedule_chain& sc) const
         //glp_write_lp(p, 0, "test.lp");
         //glp_write_mps(p, GLP_MPS_FILE, 0, "test.mps");
 
-        #if 1
+        #if 0
         glp_read_mip(p, "test.sol");
         #undef SOLVE_WITH_GLPK
         #undef SOLVE_WITH_SYMPHONY
