@@ -49,13 +49,13 @@ bool schedule_chain::check_against_dag(const schedule_dag& dag) const
     return true;
 }
 
-size_t schedule_chain::compute_rp_against_dag(const schedule_dag& dag) const
+size_t schedule_chain::compute_rp_against_dag(const schedule_dag& dag, bool ignore_external_reg) const
 {
     std::map< schedule_dep::reg_t, size_t > nb_use_left;
     size_t rp = 0;
 
     /* if the chain is only a subgraph of the DAG, handle it */
-    if(get_unit_count() < dag.get_units().size())
+    if(get_unit_count() < dag.get_units().size() && ignore_external_reg)
     {
         schedule_dag *cpy = dag.dup();
         for(size_t u = 0; u < dag.get_units().size(); u++)
@@ -108,7 +108,15 @@ size_t schedule_chain::compute_rp_against_dag(const schedule_dag& dag) const
         /* update RP */
         rp = std::max(rp, nb_use_left.size());
     }
-    assert(nb_use_left.size() == 0 && "Variables still alive at end of schedule !");
+
+    if(ignore_external_reg)
+    {
+        assert(nb_use_left.size() == 0 && "Variables still alive at end of schedule !");
+    }
+    else
+    {
+        rp = std::max(rp, nb_use_left.size());
+    }
 
     return rp;
 }

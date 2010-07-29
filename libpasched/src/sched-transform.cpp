@@ -1322,7 +1322,8 @@ void break_symmetrical_branch_merge::transform(schedule_dag& dag, const schedule
          * 4) The number of register created by V_i must not depend on i (constant)
          */
         const schedule_unit *unit = dag.get_units()[u];
-        std::set< const schedule_unit * > succs = dag.get_reachable(unit, schedule_dag::rf_follow_succs);
+        std::set< const schedule_unit * > succs =
+            dag.get_reachable(unit, schedule_dag::rf_follow_succs | schedule_dag::rf_immediate);
         std::set< const schedule_unit * >::iterator it;
 
         /* filter out nodes with several predecessors and/or successors */
@@ -1333,12 +1334,12 @@ void break_symmetrical_branch_merge::transform(schedule_dag& dag, const schedule
             std::vector< const schedule_unit * > to_remove;
             for(it = succs.begin(); it != succs.end(); ++it)
             {
-                if(dag.get_reachable(*it, schedule_dag::rf_follow_preds).size() != 1)
+                if(dag.get_reachable(*it, schedule_dag::rf_follow_preds | schedule_dag::rf_immediate).size() != 1)
                 {
                     to_remove.push_back(*it);
                     continue;
                 }
-                if(dag.get_reachable(*it, schedule_dag::rf_follow_succs).size() != 1)
+                if(dag.get_reachable(*it, schedule_dag::rf_follow_succs | schedule_dag::rf_immediate).size() != 1)
                 {
                     to_remove.push_back(*it);
                     continue;

@@ -322,15 +322,22 @@ namespace
         st.cache_bm.set_nb_bits(st.nb_units);
     }
 
-    void dump_schedule(exp_state& st, const std::vector< unit_idx_t >& s, const std::string& prefix)
-    {
-        for(size_t i = 0; i < s.size(); i++)
-            debug() << prefix << st.dag->get_units()[s[i]]->to_string() << "\n";
-    }
-
     void do_schedule(exp_state& st)
     {
         assert(st.cache_bm.nb_bits_set() == st.cur_schedule.size() && "Inconsistent bitmap");
+        #ifdef ENABLE_SCHED_AUTO_CHECK_RP
+        {
+            generic_schedule_chain chain;
+            for(size_t i = 0; i < st.cur_schedule.size(); i++)
+                chain.append_unit(st.dag->get_units()[st.cur_schedule[i]]);
+            if(chain.compute_rp_against_dag(*st.dag, false) != st.cur_rp)
+            {
+                std::cout << "claimed: " << st.cur_rp << "\n";
+                std::cout << "actual " << chain.compute_rp_against_dag(*st.dag, false) << "\n";
+                assert(false);
+            }
+        }
+        #endif
         /* timer */
         if(exp_ire(st))
             throw exp_timeout();
@@ -395,7 +402,6 @@ namespace
             /* stop */
             return;
         }
-
         /* either we have no cached result or not good enough cache, so let's compute something */
         Lcompute:
         
@@ -415,6 +421,7 @@ namespace
 
             #ifdef ENABLE_SCHED_AUTO_CHECK_RP
             {
+                assert(st.best_schedule.size() == st.nb_units);
                 generic_schedule_chain chain;
                 for(size_t i = 0; i < st.best_schedule.size(); i++)
                     chain.append_unit(st.dag->get_units()[st.best_schedule[i]]);
@@ -441,11 +448,19 @@ namespace
         /* try each schedulable unit */
         for(size_t i = 0; i < st.schedulable.size(); i++)
         {
+            #ifndef OPTIMIZE_SAVE_RESTORE
+            /* save live regs */
+            std::map< schedule_dep::reg_t, exp_live_reg > old_live = st.live_regs;
+            /* save schedulable */
+            std::vector< unit_idx_t > old_schedulable = st.schedulable;
+            /* save dynamic info */
+            std::vector< exp_dynamic_unit_info > old_dinfo = st.unit_dinfo;
+            #endif
             /* save RP */
             size_t old_rp = st.cur_rp;
 
             /* remove unit from schedulables */
-            size_t unit = st.schedulable[i];
+            unit_idx_t unit = st.schedulable[i];
             unordered_vector_remove(i, st.schedulable);
             /* and add it to current schedule */
             st.cur_schedule.push_back(unit);
@@ -509,9 +524,10 @@ namespace
                 /* optimality is not easy to get */
                 cc.bw.optimal = cc.bw.optimal && rec_cc.bw.optimal;
                 /* is it better than current ? */
-                if(rec_cc.bw.achieved_rp < cc.bw.achieved_rp)
+                size_t achieved_rp = std::max(rec_cc.bw.achieved_rp, inst_rp);
+                if(achieved_rp < cc.bw.achieved_rp)
                 {
-                    cc.bw.achieved_rp = rec_cc.bw.achieved_rp;
+                    cc.bw.achieved_rp = achieved_rp;
                     cc.bw.best_unit = unit;
                 }
             }
@@ -519,7 +535,8 @@ namespace
             /* restore everything */
             st.cur_rp = old_rp;
             st.cur_schedule.pop_back();
-            
+
+            #ifdef OPTIMIZE_SAVE_RESTORE
             size_t to_remove = 0;
             /* deupdate deps and unrelease units */
             for(size_t j = 0; j < st.unit_sinfo[unit].unit_release.size(); j++)
@@ -543,6 +560,8 @@ namespace
             {
                 schedule_dep::reg_t reg = st.unit_sinfo[unit].reg_create[j];
                 assert(st.live_regs.find(reg) != st.live_regs.end() && "Created variable is not alive !");
+                assert(st.live_regs[reg].nb_use_left ==  st.unit_sinfo[unit].reg_create_use_count[j]
+                        && "Created variable has wrong use count !");
                 st.live_regs.erase(reg);
             }
 
@@ -550,9 +569,14 @@ namespace
             for(size_t j = 0; j < st.unit_sinfo[unit].reg_use.size(); j++)
             {
                 schedule_dep::reg_t reg = st.unit_sinfo[unit].reg_use[j];
-                st.live_regs[reg].nb_use_left++;
-                st.live_regs[reg].id = reg;
+                if((++st.live_regs[reg].nb_use_left) == 1)
+                    st.live_regs[reg].id = reg;
             }
+            #else
+            st.live_regs = old_live;
+            st.schedulable = old_schedulable;
+            st.unit_dinfo = old_dinfo;
+            #endif
 
             /* At this point, we have an opportunity to stop
              * Indeed, if the current register pressure is already higher than the best,
@@ -566,6 +590,7 @@ namespace
             if(st.cur_rp >= st.best_rp && (i + 1) < st.schedulable.size())
             {
                 cc.bw.optimal = false;
+                break;
             }
         }
     }
@@ -605,7 +630,7 @@ void exp_scheduler::schedule(schedule_dag& dag, schedule_chain& sc) const
         assert(st.best_schedule.size() == st.nb_units && "Schedule has the wrong size !");
         for(size_t i = 0; i < st.best_schedule.size(); i++)
             sc.append_unit(dag.get_units()[st.best_schedule[i]]);
-
+            
         #ifdef ENABLE_SCHED_AUTO_CHECK_RP
         {
             generic_schedule_chain gsc;

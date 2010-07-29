@@ -33,7 +33,11 @@ class schedule_chain
     virtual void append_unit(const schedule_unit *unit) = 0;
 
     virtual bool check_against_dag(const schedule_dag& dag) const;
-    virtual size_t compute_rp_against_dag(const schedule_dag& dag) const;
+    /**
+     * Compute the register pressure of the chain with respect to a DAG.
+     * If ignore_external_reg is set to true, it is like if the DAG was restricted to the nodes of the chain.
+     * If it is false, then the register created in the chain but not killed in it are taken into account */
+    virtual size_t compute_rp_against_dag(const schedule_dag& dag, bool ignore_external_reg = true) const;
 
     protected:
 };

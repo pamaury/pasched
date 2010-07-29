@@ -660,7 +660,7 @@ int __main(int argc, char **argv)
     pasched::schedule_dag *dag_copy = dag.dup();
     pipeline.transform(dag, sched, chain, status);
     /* check chain against dag */
-    bool ok = chain.check_against_dag(*dag_copy);
+    bool ok = chain.check_against_dag(after_unique_accum.get_dag());
     if(!ok)
         throw std::runtime_error("invalid schedule");
     /* we don't want to run it on the initial graph because it will be a disaster
