@@ -490,15 +490,13 @@ void strip_useless_order_deps::transform(schedule_dag& dag, const scheduler& s, 
     {
         const schedule_unit *unit = units[u];
         const std::vector< schedule_dep >& succs = dag.get_succs(unit);
+        std::map< const schedule_unit *, size_t > order_count;
         for(size_t i = 0; i < succs.size(); i++)
-            for(size_t j = i + 1; j < succs.size(); j++)
-                if(succs[i].kind() == schedule_dep::order_dep &&
-                        succs[j].kind() == schedule_dep::order_dep &&
-                        succs[i].to() == succs[j].to())
-                {
-                    to_remove.push_back(succs[j]);
-                    break;
-                }
+            if(succs[i].kind() == schedule_dep::order_dep)
+            {
+                if((++order_count[succs[i].to()]) >= 2)
+                    to_remove.push_back(succs[i]);
+            }
     }
 
     dag.remove_dependencies(to_remove);
