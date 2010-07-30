@@ -672,7 +672,7 @@ int __main(int argc, char **argv)
     //debug_view_chain(chain);
     #endif
 
-    #if 0
+    #if 1
     if(pasched::time_stat::get_time_stat_count() != 0)
     {
         std::cout << "Time statistics:\n";

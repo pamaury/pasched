@@ -847,8 +847,7 @@ void split_def_use_dom_use_deps::transform(schedule_dag& dag, const scheduler& s
     debug() << "---> split_def_use_dom_use_deps::transform\n";
     DEBUG_CHECK_BEGIN_X(dag, c)
     XTM_START(split_def_use_dom_use_deps)
-    
-    bool graph_changed = false;
+
     /* Shortcuts */
     const std::vector< const schedule_unit * >& units = dag.get_units();
     size_t n = units.size();
@@ -886,6 +885,7 @@ void split_def_use_dom_use_deps::transform(schedule_dag& dag, const scheduler& s
     /* Each iteration might modify the graph */
     while(true)
     {
+        bool quit = true;
         /* For each unit U */
         for(size_t u = 0; u < dag.get_units().size(); u++)
         {
@@ -919,9 +919,9 @@ void split_def_use_dom_use_deps::transform(schedule_dag& dag, const scheduler& s
             {
                 std::vector< schedule_dep > reg_use = reg_succs_it->second;
 
-                /* See if one successor S of U dominate all use
+                /* See if one successor S of U dominate all uses
                  * NOTE: S can be any successor of U
-                 * NOTE: there can be several dominators, we list tham all */
+                 * NOTE: there can be several dominators, we list them all */
                 std::vector< const schedule_unit * > dominators;
                 
                 for(size_t dom_idx = 0; dom_idx < succs.size(); dom_idx++)
@@ -995,18 +995,18 @@ void split_def_use_dom_use_deps::transform(schedule_dag& dag, const scheduler& s
                     /* warning here: replace_unit would break_units() order, that's why we delay
                      * the replacement to after the loop */
                     chains_added.push_back(scu);
-                    
-                    goto Lgraph_changed;
+
+                    /* continue to next register but ask for a new general round
+                     * because we can continue splitting on the dominator perhaps */
+                    quit = false;
+                    break;
                 }
             }
         }
 
-        /* Graph did not change */
-        break;
-
-        Lgraph_changed:
-        graph_changed = true;
-        continue;
+        if(quit)
+            /* Graph did not change */
+            break;
     }
 
     /* now do the replacement, using a map to forward changes if any */
@@ -1030,7 +1030,7 @@ void split_def_use_dom_use_deps::transform(schedule_dag& dag, const scheduler& s
 
     XTM_STOP(split_def_use_dom_use_deps)
 
-    status.set_modified_graph(graph_changed);
+    status.set_modified_graph(chains_added.size() > 0);
     status.set_deadlock(false);
     status.set_junction(false);
 
@@ -1039,19 +1039,22 @@ void split_def_use_dom_use_deps::transform(schedule_dag& dag, const scheduler& s
     XTM_START(split_def_use_dom_use_deps)
     /* replace back units */
     std::reverse(chains_added.begin(), chains_added.end());
+    /* exploit the fact that each replacement don't change indices because
+     * we replace one unit by another */
+    std::map< const schedule_unit *, size_t > index_map;
+    for(size_t j = 0; j < c.get_unit_count(); j++)
+        index_map[c.get_unit_at(j)] = j;
 
     for(size_t i = 0; i < chains_added.size(); i++)
     {
-        size_t j;
-        for(j = 0; j < c.get_unit_count(); j++)
-        {
-            if(c.get_unit_at(j) == chains_added[i])
-                break;
-        }
-        if(j == c.get_unit_count())
+        if(index_map.find(chains_added[i]) == index_map.end())
             throw std::runtime_error("split_def_use_dom_use_deps::transform detected inconsistent schedule chain");
+        size_t j = index_map[chains_added[i]];
 
         c.expand_unit_at(j, chains_added[i]->get_chain());
+        assert(chains_added[i]->get_chain().size() == 1 && "split_def_use_dom_use_deps::transform has strange chain");
+        index_map.erase(chains_added[i]);
+        index_map[chains_added[i]->get_chain()[0]] = j;
         delete chains_added[i];
     }
 

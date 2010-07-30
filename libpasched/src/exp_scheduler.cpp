@@ -325,7 +325,7 @@ namespace
     void do_schedule(exp_state& st)
     {
         assert(st.cache_bm.nb_bits_set() == st.cur_schedule.size() && "Inconsistent bitmap");
-        #ifdef ENABLE_SCHED_AUTO_CHECK_RP
+        #ifdef ENABLE_EXPENSIVE_SCHED_AUTO_CHECK_RP
         {
             generic_schedule_chain chain;
             for(size_t i = 0; i < st.cur_schedule.size(); i++)
@@ -440,6 +440,7 @@ namespace
         }
 
         /* normal case: there are things to schedule */
+        #define OPTIMIZE_SAVE_RESTORE
 
         cc.bw.valid = false;
         cc.bw.optimal = true;
