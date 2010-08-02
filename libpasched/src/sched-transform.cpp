@@ -942,9 +942,9 @@ void split_def_use_dom_use_deps::transform(schedule_dag& dag, const scheduler& s
                     /* Create a new unit to replace the old one */
                     chain_schedule_unit *scu = new chain_schedule_unit;
                     scu->get_chain().push_back(dom);
-                    /* RIP is computed later */
+                    /* IRP is computed later */
 
-                    /* warning here: replace_unit would break_units() order, that's why we delay
+                    /* warning here: replace_unit would break units order, that's why we delay
                      * the replacement to after the loop */
                     chains_added.push_back(scu);
 

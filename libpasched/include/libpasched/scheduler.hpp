@@ -9,12 +9,6 @@
 namespace PAMAURY_SCHEDULER_NS
 {
 
-#ifdef ENABLE_SCHED_TIME_STAT
-#define STM_STAT(a) a
-#else
-#define STM_STAT(a)
-#endif
-
 #define STM_DECLARE(name) STM_STAT(namespace { time_stat stm_##name("stm-" #name); })
 #define STM_START(name) STM_STAT(stm_##name.get_timer().start();)
 #define STM_STOP(name) STM_STAT(stm_##name.get_timer().stop();)

@@ -10,6 +10,7 @@ option(ENABLE_EXPENSIVE_SCHED_AUTO_CHECK_RP "Enable expensive automatic check of
 option(ENABLE_XFORM_AUTO_CHECK_RP "Enable automatic check of register pressure in transformations" OFF)
 option(ENABLE_XFORM_TIME_STAT "Enable time statistics for transformations" OFF)
 option(ENABLE_SCHED_TIME_STAT "Enable time statistics for schedulers" OFF)
+option(ENABLE_MISC_TIME_STAT "Enable time statistics for miscellaneous things" OFF)
 
 include(FindGLPK)
 if(HAS_SYMPHONY AND NOT GLPK_FOUND)

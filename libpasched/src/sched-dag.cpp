@@ -1,6 +1,7 @@
 #include "sched-dag.hpp"
 #include "sched-dag-viewer.hpp"
 #include "tools.hpp"
+#include "time-tools.hpp"
 #include <stdexcept>
 #include <queue>
 #include <iostream>
@@ -248,10 +249,12 @@ std::set< schedule_dep::reg_t > schedule_dag::get_reg_dont_destroy_exact(
     return s;
 }
 
+MTM_STAT(TM_DECLARE(schedule_dag__fuse_units, "mtm-fuse_units"))
 
 chain_schedule_unit *schedule_dag::fuse_units(const schedule_unit *a,
         const schedule_unit *b, bool simulate_if_approx)
 {
+    MTM_STAT(TM_START(schedule_dag__fuse_units))
     /* create new unit */
     chain_schedule_unit *c = new chain_schedule_unit;
     c->get_chain().push_back(a);
@@ -357,6 +360,7 @@ chain_schedule_unit *schedule_dag::fuse_units(const schedule_unit *a,
             */
             if(simulate_if_approx)
             {
+                MTM_STAT(TM_STOP(schedule_dag__fuse_units))
                 delete c;
                 return 0;
             }
@@ -391,6 +395,8 @@ chain_schedule_unit *schedule_dag::fuse_units(const schedule_unit *a,
 
     /* remove redundant data deps */
     remove_redundant_data_dep_preds(c);
+
+    MTM_STAT(TM_STOP(schedule_dag__fuse_units))
 
     return c;
 }

@@ -8,12 +8,6 @@
 namespace PAMAURY_SCHEDULER_NS
 {
 
-#ifdef ENABLE_XFORM_TIME_STAT
-#define XTM_STAT(a) a
-#else
-#define XTM_STAT(a)
-#endif
-
 #define XTM_DECLARE(prefix, name) XTM_STAT(TM_DECLARE(tm_##prefix##name, "xtm-"#prefix"-"#name))
 #define XTM_START(prefix, name) XTM_STAT(TM_START(tm_##prefix##name))
 #define XTM_STOP(prefix, name) XTM_STAT(TM_STOP(tm_##prefix##name))
