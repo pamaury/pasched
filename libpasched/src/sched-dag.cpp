@@ -167,9 +167,12 @@ std::set< schedule_dep::reg_t > schedule_dag::get_reg_destroy(
     return s;
 }
 
+MTM_STAT(TM_DECLARE(schedule_dag__get_reg_destroy_exact, "mtm-get_reg_destroy_exact"))
+
 std::set< schedule_dep::reg_t > schedule_dag::get_reg_destroy_exact(
     const schedule_unit *unit) const
 {
+    MTM_STAT(TM_START(schedule_dag__get_reg_destroy_exact))
     std::set< schedule_dep::reg_t > s;
     /* compute backward reachable set of unit U */
     std::set< const schedule_unit * > lazy_set;
@@ -209,12 +212,16 @@ std::set< schedule_dep::reg_t > schedule_dag::get_reg_destroy_exact(
         Lnot_destroy:
         continue;
     }
+    MTM_STAT(TM_STOP(schedule_dag__get_reg_destroy_exact))
     return s;
 }
+
+MTM_STAT(TM_DECLARE(schedule_dag__get_reg_dont_destroy_exact, "mtm-get_reg_dont_destroy_exact"))
 
 std::set< schedule_dep::reg_t > schedule_dag::get_reg_dont_destroy_exact(
     const schedule_unit *unit) const
 {
+    MTM_STAT(TM_START(schedule_dag__get_reg_dont_destroy_exact))
     std::set< schedule_dep::reg_t > s;
     /* compute reachable set of unit U */
     std::set< const schedule_unit * > lazy_set;
@@ -257,6 +264,7 @@ std::set< schedule_dep::reg_t > schedule_dag::get_reg_dont_destroy_exact(
         s.insert(dep.reg());
         continue;
     }
+    MTM_STAT(TM_STOP(schedule_dag__get_reg_dont_destroy_exact))
     return s;
 }
 
