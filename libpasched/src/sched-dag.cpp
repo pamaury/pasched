@@ -171,6 +171,9 @@ std::set< schedule_dep::reg_t > schedule_dag::get_reg_destroy_exact(
     const schedule_unit *unit) const
 {
     std::set< schedule_dep::reg_t > s;
+    /* compute backward reachable set of unit U */
+    std::set< const schedule_unit * > lazy_set;
+    bool has_lazy_set = false;
     
     /* For each predecessor P of U */
     for(size_t i = 0; i < get_preds(unit).size(); i++)
@@ -183,19 +186,21 @@ std::set< schedule_dep::reg_t > schedule_dag::get_reg_destroy_exact(
         for(size_t j = 0; j < get_succs(dep.from()).size(); j++)
         {
             const schedule_dep& sec_dep = get_succs(dep.from())[j];
-            /* if the S->P link uses the same register as P->U and P<>U
+            /* if the P->S link uses the same register as P->U and P<>U
              * then the register has another use, so we need a complete
              * analysis */
             if(sec_dep.kind() == schedule_dep::data_dep &&
                     sec_dep.reg() == dep.reg() &&
                     sec_dep.to() != unit)
             {
-                /* compute reachable set of S and see if U is in */
-                std::set< const schedule_unit * > set = get_reachable(
-                    sec_dep.to(), rf_follow_succs);
-                /* if U is in, then it's ok, otherwise, we can't be sure
+                if(!has_lazy_set)
+                {
+                    lazy_set = get_reachable(unit, rf_follow_preds);
+                    has_lazy_set = true;
+                }
+                /* if S is in, then it's ok, otherwise, we can't be sure
                  * that U destroys the register */
-                if(set.find(unit) == set.end())
+                if(lazy_set.find(sec_dep.to()) == lazy_set.end())
                     goto Lnot_destroy;
             }
         }
@@ -212,7 +217,8 @@ std::set< schedule_dep::reg_t > schedule_dag::get_reg_dont_destroy_exact(
 {
     std::set< schedule_dep::reg_t > s;
     /* compute reachable set of unit U */
-    std::set< const schedule_unit * > set = get_reachable(unit, rf_follow_succs);
+    std::set< const schedule_unit * > lazy_set;
+    bool has_lazy_set = false;
     
     /* For each predecessor P of U */
     for(size_t i = 0; i < get_preds(unit).size(); i++)
@@ -232,9 +238,14 @@ std::set< schedule_dep::reg_t > schedule_dag::get_reg_dont_destroy_exact(
                     sec_dep.reg() == dep.reg() &&
                     sec_dep.to() != unit)
             {
+                if(!has_lazy_set)
+                {
+                    lazy_set = get_reachable(unit, rf_follow_succs);
+                    has_lazy_set = true;
+                }
                 /* if S is in reachable set of U, then the register is
                  * not destroyed by U because is used later on */
-                if(set.find(sec_dep.to()) != set.end())
+                if(lazy_set.find(sec_dep.to()) != lazy_set.end())
                     goto Lnot_destroy;
             }
         }
@@ -255,44 +266,7 @@ chain_schedule_unit *schedule_dag::fuse_units(const schedule_unit *a,
         const schedule_unit *b, bool simulate_if_approx)
 {
     MTM_STAT(TM_START(schedule_dag__fuse_units))
-    /* create new unit */
-    chain_schedule_unit *c = new chain_schedule_unit;
-    c->get_chain().push_back(a);
-    c->get_chain().push_back(b);
-
-    /* create new dependencies */
-    std::vector< schedule_dep > to_add;
-    for(size_t i = 0; i < get_preds(a).size(); i++)
-    {
-        schedule_dep dep = get_preds(a)[i];
-        dep.set_to(c);
-        to_add.push_back(dep);
-    }
-    for(size_t i = 0; i < get_succs(a).size(); i++)
-    {
-        schedule_dep dep = get_succs(a)[i];
-        /* avoid self loop */
-        if(dep.to() == b)
-            continue;
-        dep.set_from(c);
-        to_add.push_back(dep);
-    }
-    for(size_t i = 0; i < get_preds(b).size(); i++)
-    {
-        schedule_dep dep = get_preds(b)[i];
-        /* avoid self loop */
-        if(dep.from() == a)
-            continue;
-        dep.set_to(c);
-        to_add.push_back(dep);
-    }
-    for(size_t i = 0; i < get_succs(b).size(); i++)
-    {
-        schedule_dep dep = get_succs(b)[i];
-        dep.set_from(c);
-        to_add.push_back(dep);
-    }
-
+    
     /* compute IRP */
     std::set< schedule_dep::reg_t > vc = get_reg_create(a);
     std::set< schedule_dep::reg_t > vu = get_reg_use(b);
@@ -361,10 +335,47 @@ chain_schedule_unit *schedule_dag::fuse_units(const schedule_unit *a,
             if(simulate_if_approx)
             {
                 MTM_STAT(TM_STOP(schedule_dag__fuse_units))
-                delete c;
                 return 0;
             }
         }
+    }
+
+    /* create new unit */
+    chain_schedule_unit *c = new chain_schedule_unit;
+    c->get_chain().push_back(a);
+    c->get_chain().push_back(b);
+
+    /* create new dependencies */
+    std::vector< schedule_dep > to_add;
+    for(size_t i = 0; i < get_preds(a).size(); i++)
+    {
+        schedule_dep dep = get_preds(a)[i];
+        dep.set_to(c);
+        to_add.push_back(dep);
+    }
+    for(size_t i = 0; i < get_succs(a).size(); i++)
+    {
+        schedule_dep dep = get_succs(a)[i];
+        /* avoid self loop */
+        if(dep.to() == b)
+            continue;
+        dep.set_from(c);
+        to_add.push_back(dep);
+    }
+    for(size_t i = 0; i < get_preds(b).size(); i++)
+    {
+        schedule_dep dep = get_preds(b)[i];
+        /* avoid self loop */
+        if(dep.from() == a)
+            continue;
+        dep.set_to(c);
+        to_add.push_back(dep);
+    }
+    for(size_t i = 0; i < get_succs(b).size(); i++)
+    {
+        schedule_dep dep = get_succs(b)[i];
+        dep.set_from(c);
+        to_add.push_back(dep);
     }
 
     c->set_internal_register_pressure(
