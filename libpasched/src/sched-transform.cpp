@@ -852,18 +852,6 @@ void split_def_use_dom_use_deps::transform(schedule_dag& dag, const scheduler& s
             for(size_t i = 0; i < succs.size(); i++)
                 if(succs[i].kind() == schedule_dep::data_dep)
                     reg_succs[succs[i].reg()].push_back(succs[i]);
-
-            if(0)
-            {
-                std::cout << "Unit: " << unit->to_string() << "\n";
-                std::map< schedule_dep::reg_t, std::vector< schedule_dep > >::iterator reg_succs_it = reg_succs.begin();
-                for(; reg_succs_it != reg_succs.end(); ++reg_succs_it)
-                {
-                    std::cout << "  Register " << reg_succs_it->first << "\n";
-                    for(size_t i = 0; i < reg_succs_it->second.size(); i++)
-                        std::cout << "    To " << reg_succs_it->second[i].to()->to_string() << "\n";
-                }
-            }
             
             /* Try each register R */
             std::map< schedule_dep::reg_t, std::vector< schedule_dep > >::iterator reg_succs_it = reg_succs.begin();

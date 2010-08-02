@@ -556,9 +556,12 @@ namespace
     }
 }
 
+MTM_STAT(TM_DECLARE(schedule_dag__build_path_map, "mtm-build_path_map"))
+
 void schedule_dag::build_path_map(std::vector< std::vector< bool > >& path,
         std::map< const schedule_unit *, size_t >& name_map)
 {
+    MTM_STAT(TM_START(schedule_dag__build_path_map))
     /* build name map and resize path */
     path.resize(get_units().size());
     name_map.clear();
@@ -574,6 +577,8 @@ void schedule_dag::build_path_map(std::vector< std::vector< bool > >& path,
 
     for(size_t i = 0; i < get_roots().size(); i++)
         compute_path_map(*this, path, name_map, reach, get_roots()[i]);
+
+    MTM_STAT(TM_STOP(schedule_dag__build_path_map))
 }
 
 /**

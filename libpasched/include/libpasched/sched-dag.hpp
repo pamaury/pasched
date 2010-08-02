@@ -208,7 +208,7 @@ class generic_schedule_dag : public schedule_dag
     std::vector< const schedule_unit * > m_roots;
     std::vector< const schedule_unit * > m_leaves;
     std::vector< schedule_dep > m_deps;
-    mutable std::map< const schedule_unit *, su_data >  m_unit_map;
+    mutable std::map< const schedule_unit *, su_data > m_unit_map;
     bool m_modified;
 };
 
