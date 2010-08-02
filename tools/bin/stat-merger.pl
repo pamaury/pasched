@@ -4,7 +4,7 @@
 
 while($line = <STDIN>)
 {
-    if($line =~ /xtm/)
+    if($line =~ /tm-/)
     {
         $line =~ s/\n//;
         @words = split(' ', $line);

@@ -11,6 +11,8 @@
 #include <set>
 #include <list>
 #include <sstream>
+#include <cmath>
+#include <stdint.h>
 
 /**
  * Shortcuts for often used types
@@ -136,65 +138,6 @@ class dag_accumulator : public pasched::transformation
      * we want to accumulate DAGs scheduled so we keep a mutable var */
     mutable pasched::generic_schedule_dag m_dag;
     bool m_deep;
-};
-
-class dag_statistics : public pasched::transformation
-{
-    public:
-    dag_statistics() :m_count(0), m_trivials(0) { }
-    virtual ~dag_statistics() {}
-
-    virtual void transform(pasched::schedule_dag& dag, const pasched::scheduler& s, pasched::schedule_chain& c,
-        pasched::transformation_status& status) const
-    {
-        status.begin_transformation();
-        status.set_modified_graph(false);
-        status.set_junction(false);
-        status.set_deadlock(false);
-        
-        m_count++;
-        if(dag.get_units().size() <= 1)
-            m_trivials++;
-        /* forward */
-        s.schedule(dag, c);
-
-        status.end_transformation();
-    }
-
-    public:
-    mutable size_t m_count;
-    mutable size_t m_trivials;
-};
-
-class trivial_dag_remover : public pasched::transformation
-{
-    public:
-    trivial_dag_remover() { }
-    virtual ~trivial_dag_remover() {}
-
-    virtual void transform(pasched::schedule_dag& dag, const pasched::scheduler& s, pasched::schedule_chain& c,
-        pasched::transformation_status& status) const
-    {
-        status.begin_transformation();
-        status.set_modified_graph(false);
-        status.set_junction(false);
-
-        if(dag.get_units().size() <= 1)
-        {
-            status.set_deadlock(true);
-            if(dag.get_units().size() == 1)
-                c.append_unit(dag.get_units()[0]);
-        }
-        else
-        {
-            status.set_deadlock(false);
-            s.schedule(dag, c);
-        }
-
-        status.end_transformation();
-    }
-
-    public:
 };
 
 const pasched::transformation *simplify_order_cuts()
@@ -532,8 +475,15 @@ void display_usage()
     }
 }
 
+using pasched::time_stat;
+
+TM_DECLARE(dtm_read, "dtm-read")
+TM_DECLARE(dtm_write, "dtm-write")
+TM_DECLARE(dtm_total, "dtm-total")
+
 int __main(int argc, char **argv)
 {
+    TM_START(dtm_total)
     //pasched::set_debug(std::cout);
     
     if(argc < 5)
@@ -578,6 +528,7 @@ int __main(int argc, char **argv)
     }
 
     /* read DAG */
+    TM_START(dtm_read)
     pasched::generic_schedule_dag dag;
     formats[from].read(argv[2], dag);
     if(!dag.is_consistent())
@@ -585,6 +536,7 @@ int __main(int argc, char **argv)
         std::cout << "Internal error, schedule DAG is not consistent !\n";
         return 1;
     }
+    TM_STOP(dtm_read)
 
     #if 0
     
@@ -626,13 +578,9 @@ int __main(int argc, char **argv)
      * the chain and in the DAG ! */
     dag_accumulator after_unique_accum(false);
     dag_accumulator accumulator;
-    dag_statistics statistics;
-    trivial_dag_remover remover;
     pipeline.add_stage(new pasched::unique_reg_ids);
     pipeline.add_stage(&after_unique_accum);
     pipeline.add_stage(&loop);
-    pipeline.add_stage(&statistics);
-    pipeline.add_stage(&remover);
     pipeline.add_stage(&accumulator);
     
     snd_stage_pipe.add_stage(new pasched::strip_dataless_units);
@@ -672,6 +620,18 @@ int __main(int argc, char **argv)
     //debug_view_chain(chain);
     #endif
 
+    /*
+    std::cout << "Status: Mod=" << status.has_modified_graph() << " Junction=" << status.is_junction()
+            << " Deadlock=" << status.is_deadlock() << "\n";
+    */
+    //std::cout << "Trivial-DAGs-scheduled: " << statistics.m_trivials << "/" << statistics.m_count << "\n";
+
+    TM_START(dtm_write)
+    formats[to].write(accumulator.get_dag(), argv[4]);
+    TM_STOP(dtm_write)
+
+    TM_STOP(dtm_total)
+
     #if 1
     if(pasched::time_stat::get_time_stat_count() != 0)
     {
@@ -679,20 +639,13 @@ int __main(int argc, char **argv)
         for(size_t i = 0; i < pasched::time_stat::get_time_stat_count(); i++)
         {
             pasched::time_stat *ts = pasched::time_stat::get_time_stat_by_index(i);
-            std::cout << "  " << ts->get_name() << ": " <<
-                (float)ts->get_timer().get_value() / (float)ts->get_timer().get_hz() << " sec\n";
+            double time = (double)ts->get_timer().get_value() / (double)ts->get_timer().get_hz();
+            
+            std::cout << "  " << ts->get_name() << ": " << time << " sec\n";
         }
     }
     
     #endif
-
-    /*
-    std::cout << "Status: Mod=" << status.has_modified_graph() << " Junction=" << status.is_junction()
-            << " Deadlock=" << status.is_deadlock() << "\n";
-    */
-    //std::cout << "Trivial-DAGs-scheduled: " << statistics.m_trivials << "/" << statistics.m_count << "\n";
-    
-    formats[to].write(accumulator.get_dag(), argv[4]);
     
     return 0;
 }

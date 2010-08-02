@@ -650,6 +650,28 @@ void generic_schedule_dag::remove_dependency(schedule_dep d)
     #endif
 }
 
+namespace
+{
+    bool find_loop(const schedule_dag& dag, const schedule_unit *unit,
+        std::map< const schedule_unit *, int >& status)
+    {
+        /* 0: not seen
+         * 1: processing
+         * 2: process */
+        if(status[unit] == 1)
+            return true;
+        if(status[unit] == 2)
+            return false;
+        status[unit] = 1;
+
+        for(size_t i = 0; i < dag.get_succs(unit).size(); i++)
+            if(find_loop(dag, dag.get_succs(unit)[i].to(), status))
+                return true;
+        status[unit] = 2;
+        return false;
+    }
+}
+
 bool generic_schedule_dag::is_consistent(std::string *out_msg) const
 {
     #if 1
@@ -722,18 +744,14 @@ bool generic_schedule_dag::is_consistent(std::string *out_msg) const
             NOT_CONSISTENT("dep in master list is not attached to target");
     }
     // check loops
-    for(size_t i = 0; i < m_units.size(); i++)
-    {
-        const schedule_unit *unit = m_units[i];
-        su_data& d = m_unit_map[unit];
-        for(size_t j = 0; j < d.succs.size(); j++)
-        {
-            const schedule_unit *s = d.succs[j].to();
-            std::set< const schedule_unit * > set = get_reachable(s, rf_follow_succs);
-            if(set.find(unit) != set.end())
-                NOT_CONSISTENT("loop in DAG");
-        }
-    }
+    std::map< const schedule_unit *, int > status;
+
+    for(size_t i = 0; i < get_units().size(); i++)
+        status[get_units()[i]] = 0;
+
+    for(size_t i = 0; i < get_roots().size(); i++)
+        if(find_loop(*this, get_roots()[i], status))
+            NOT_CONSISTENT("loop in DAG");
 
     return true;
 }

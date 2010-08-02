@@ -8,7 +8,8 @@ option(ENABLE_DAG_AUTO_CHECK_CONSISTENCY "Enable automatic consistency check in 
 option(ENABLE_SCHED_AUTO_CHECK_RP "Enable automatic check of register pressure in schedulers" OFF)
 option(ENABLE_EXPENSIVE_SCHED_AUTO_CHECK_RP "Enable expensive automatic check of register pressure in schedulers" OFF)
 option(ENABLE_XFORM_AUTO_CHECK_RP "Enable automatic check of register pressure in transformations" OFF)
-option(ENABLE_XFORM_TIME_STAT "Enable time statistics of transformation" OFF)
+option(ENABLE_XFORM_TIME_STAT "Enable time statistics for transformations" OFF)
+option(ENABLE_SCHED_TIME_STAT "Enable time statistics for schedulers" OFF)
 
 include(FindGLPK)
 if(HAS_SYMPHONY AND NOT GLPK_FOUND)

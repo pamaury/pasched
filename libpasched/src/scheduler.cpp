@@ -24,6 +24,8 @@ scheduler::~scheduler()
 /**
  * rand_scheduler
  */
+STM_DECLARE(rand_scheduler)
+
 rand_scheduler::rand_scheduler()
 {
 }
@@ -35,17 +37,21 @@ rand_scheduler::~rand_scheduler()
 void rand_scheduler::schedule(pasched::schedule_dag& dag, pasched::schedule_chain& c) const
 {
     /* do a stupid and inefficient list scheduling */
+    STM_START(rand_scheduler)
 
     while(dag.get_roots().size() > 0)
     {
         c.append_unit(dag.get_roots()[0]);
         dag.remove_unit(dag.get_roots()[0]);
     }
+
+    STM_STOP(rand_scheduler)
 }
 
 /**
  * simple_rp_scheduler
  */
+STM_DECLARE(simple_rp_scheduler)
 
 /* represent a live register */
 struct srp_live_reg
@@ -74,6 +80,7 @@ simple_rp_scheduler::~simple_rp_scheduler()
 void simple_rp_scheduler::schedule(pasched::schedule_dag& dag, pasched::schedule_chain& c) const
 {
     debug() << "---> simple_rp_scheduler::schedule\n";
+    STM_START(simple_rp_scheduler)
     /* data structures used during the scheduling */
     std::map< const schedule_unit *, srp_unit_info > unit_info;
     std::map< schedule_dep::reg_t, srp_live_reg > live_regs;
@@ -194,6 +201,7 @@ void simple_rp_scheduler::schedule(pasched::schedule_dag& dag, pasched::schedule
         max_rp = std::max(max_rp, live_regs.size());
     }
 
+    STM_STOP(simple_rp_scheduler)
     debug() << "<--- simple_rp_scheduler::schedule\n";
 }
 

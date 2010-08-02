@@ -16,6 +16,8 @@
 namespace PAMAURY_SCHEDULER_NS
 {
 
+STM_DECLARE(exp_scheduler)
+
 exp_scheduler::exp_scheduler(const scheduler *fallback_sched, size_t fallback_timeout, bool verbose)
     :m_fallback_sched(fallback_sched), m_timeout(fallback_timeout), m_verbose(verbose)
 {
@@ -621,6 +623,7 @@ void exp_scheduler::schedule(schedule_dag& dag, schedule_chain& sc) const
     st.timeout = m_timeout;
     st.verbose = m_verbose;
 
+    STM_START(exp_scheduler)
     compute_static_info(dag, st);
     exp_schedule(st);
 
@@ -641,9 +644,12 @@ void exp_scheduler::schedule(schedule_dag& dag, schedule_chain& sc) const
             assert(st.best_rp == gsc.compute_rp_against_dag(dag) && "Mismatch between announced and actual RP in exp_scheduler");
         }
         #endif
+
+        STM_STOP(exp_scheduler)
     }
     else
     {
+        STM_STOP(exp_scheduler)
         /* fallback */
         m_fallback_sched->schedule(dag, sc);
     }

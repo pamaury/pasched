@@ -34,6 +34,8 @@
 namespace PAMAURY_SCHEDULER_NS
 {
 
+STM_DECLARE(mris_ilp_scheduler)
+
 mris_ilp_scheduler::mris_ilp_scheduler(const scheduler *fallback, size_t fallback_timeout, bool verbose)
     :m_fallback_sched(fallback), m_timeout(fallback_timeout), m_verbose(verbose)
 {
@@ -62,8 +64,9 @@ struct instr_regs_info_t
 
 void mris_ilp_scheduler::schedule(schedule_dag& dag, schedule_chain& sc) const
 {
-    #define ILP_ERROR(msg) { std::cout << "ILP_ERROR: " << msg << "\n"; goto Lerror; }
-    
+    #define ILP_ERROR(msg) { std::cout << "ILP_ERROR: " << msg << "\n"; glp_delete_prob(p); goto Lerror; }
+
+    STM_START(mris_ilp_scheduler)
     {
         char name[32];
         // column of z
@@ -667,10 +670,12 @@ void mris_ilp_scheduler::schedule(schedule_dag& dag, schedule_chain& sc) const
         #endif
         
         glp_delete_prob(p);
+        STM_STOP(mris_ilp_scheduler)
         return;
     }
 
     Lerror:
+    STM_STOP(mris_ilp_scheduler)
     debug() << "mris_schedule fallback\n";
     if(m_fallback_sched)
         m_fallback_sched->schedule(dag, sc);
