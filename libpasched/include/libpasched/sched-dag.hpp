@@ -155,6 +155,16 @@ class schedule_dag
     virtual void remove_redundant_data_dep_preds(const schedule_unit *unit);
     virtual void remove_redundant_data_dep_succs(const schedule_unit *unit);
     virtual void remove_redundant_data_deps();
+
+    /**
+     * Build a path map for the entire graph.
+     * It builds to objects: first a 2D-table of boolean and second a map.
+     * The [index->unit] map is the one returned by get_units() and the
+     * [unit->index] map is the one built by this function.
+     *
+     * NOTE: the input table is resized and the name map is cleared */
+    virtual void build_path_map(std::vector< std::vector< bool > >& path_map,
+        std::map< const schedule_unit *, size_t >& name_map);
 };
 
 /**

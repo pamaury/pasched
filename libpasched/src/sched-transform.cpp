@@ -492,23 +492,7 @@ void strip_useless_order_deps::transform(schedule_dag& dag, const scheduler& s, 
     dag.remove_dependencies(to_remove);
     to_remove.clear();
 
-    path.resize(n);
-    for(size_t u = 0; u < n; u++)
-    {
-        name_map[units[u]] = u;
-        path[u].resize(n);
-    }
-
-    /* Fill path */
-    for(size_t u = 0; u < n; u++)
-    {
-        std::set< const schedule_unit * > reach = dag.get_reachable(units[u],
-            schedule_dag::rf_follow_succs | schedule_dag::rf_include_unit);
-        std::set< const schedule_unit * >::iterator it = reach.begin();
-        
-        for(; it != reach.end(); ++it)
-            path[u][name_map[*it]] = true;
-    }
+    dag.build_path_map(path, name_map);
 
     /* To remove a dependency, we go through each node U
      * If for such a node, there are two dependencies A->U and B->U
@@ -838,35 +822,13 @@ void split_def_use_dom_use_deps::transform(schedule_dag& dag, const scheduler& s
     DEBUG_CHECK_BEGIN_X(dag, c)
     XTM_FW_START(split_def_use_dom_use_deps)
 
-    /* Shortcuts */
-    const std::vector< const schedule_unit * >& units = dag.get_units();
-    size_t n = units.size();
     /* Map a unit pointer to a number */
     std::map< const schedule_unit *, size_t > name_map;
     /* path[u][v] is true if there is a path from u to v */
     std::vector< std::vector< bool > > path;
     /* First compute path map, it will not changed during the algorithm
      * even though some edges are changed */
-    path.resize(n);
-    for(size_t u = 0; u < n; u++)
-    {
-        name_map[units[u]] = u;
-        path[u].resize(n);
-    }
-
-    /* Fill path */
-    for(size_t u = 0; u < n; u++)
-    {
-        std::set< const schedule_unit * > reach = dag.get_reachable(units[u],
-            schedule_dag::rf_follow_succs | schedule_dag::rf_include_unit);
-        std::set< const schedule_unit * >::iterator it = reach.begin();
-        for(; it != reach.end(); ++it)
-            path[u][name_map[*it]] = true;
-        /*
-        std::cout << "Reachable from " << units[u]->to_string() << "\n";
-        std::cout << "  " << reach << "\n";
-        */
-    }
+    dag.build_path_map(path, name_map);
     /* Chain units added (each one "contains" only one unit but we need to tweak IRP) */
     std::vector< chain_schedule_unit * > chains_added;
     

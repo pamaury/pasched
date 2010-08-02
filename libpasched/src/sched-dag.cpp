@@ -520,6 +520,56 @@ void schedule_dag::remove_redundant_data_deps()
         remove_redundant_data_dep_succs(get_units()[u]);
 }
 
+namespace
+{
+    void compute_path_map(
+        const schedule_dag& dag,
+        std::vector< std::vector< bool > >& path,
+        std::map< const schedule_unit *, size_t >& name_map,
+        std::map< const schedule_unit *, std::set< const schedule_unit * > >& reach,
+        const schedule_unit *unit)
+    {
+        if(reach.find(unit) != reach.end())
+            return;
+        std::set< const schedule_unit * > set;
+        set.insert(unit);
+
+        for(size_t i = 0; i < dag.get_succs(unit).size(); i++)
+        {
+            const schedule_unit *next = dag.get_succs(unit)[i].to();
+            compute_path_map(dag, path, name_map, reach, next);
+            
+            std::set< const schedule_unit * >& rset = reach[next];
+            set.insert(rset.begin(), rset.end());
+        }
+
+        for(std::set< const schedule_unit * >::iterator it = set.begin(); it != set.end(); ++it)
+            path[name_map[unit]][name_map[*it]] = true;
+
+        reach[unit] = set;
+    }
+}
+
+void schedule_dag::build_path_map(std::vector< std::vector< bool > >& path,
+        std::map< const schedule_unit *, size_t >& name_map)
+{
+    /* build name map and resize path */
+    path.resize(get_units().size());
+    name_map.clear();
+    
+    for(size_t u = 0; u < get_units().size(); u++)
+    {
+        name_map[get_units()[u]] = u;
+        path[u].resize(get_units().size());
+    }
+
+    /* compute path map */
+    std::map< const schedule_unit *, std::set< const schedule_unit * > > reach;
+
+    for(size_t i = 0; i < get_roots().size(); i++)
+        compute_path_map(*this, path, name_map, reach, get_roots()[i]);
+}
+
 /**
  * Generic Implementation
  */
