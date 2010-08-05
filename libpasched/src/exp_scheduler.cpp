@@ -280,8 +280,6 @@ namespace
 
     inline void start_timer(exp_state& st)
     {
-        if(st.timeout == 0)
-            return;
         /* set the diviser to 100, this will cause the expire check to call clock
          * only once in 100 times, to avoid too much overhead */
         st.clock_div = 100;
