@@ -238,7 +238,7 @@ std::set< schedule_dep::reg_t > schedule_dag::get_reg_dont_destroy_exact(
         for(size_t j = 0; j < get_succs(dep.from()).size(); j++)
         {
             const schedule_dep& sec_dep = get_succs(dep.from())[j];
-            /* if the S->P link uses the same register as P->U and P<>U
+            /* if the P->S link uses the same register as P->U and P<>U
              * then the register has another use, so we need a complete
              * analysis */
             if(sec_dep.kind() == schedule_dep::data_dep &&
@@ -274,12 +274,12 @@ chain_schedule_unit *schedule_dag::fuse_units(const schedule_unit *a,
         const schedule_unit *b, bool simulate_if_approx)
 {
     MTM_STAT(TM_START(schedule_dag__fuse_units))
-    
     /* compute IRP */
     std::set< schedule_dep::reg_t > vc = get_reg_create(a);
     std::set< schedule_dep::reg_t > vu = get_reg_use(b);
     std::set< schedule_dep::reg_t > vd = get_reg_destroy_exact(b);
     std::set< schedule_dep::reg_t > vdd = get_reg_dont_destroy_exact(b);
+
     std::set< schedule_dep::reg_t > vu_min_vc_min_vdd = set_minus(set_minus(vu, vc), vdd);
     std::set< schedule_dep::reg_t > vu_plus_vc_min_vdd = set_minus(set_union(vu, vc), vdd);
     std::set< schedule_dep::reg_t > vc_min_vd = set_minus(vc, vd);

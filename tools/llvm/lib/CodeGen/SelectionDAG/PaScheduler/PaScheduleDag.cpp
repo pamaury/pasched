@@ -146,39 +146,6 @@ class LLVMScheduleUnit : public pasched::schedule_unit
     std::string m_label;
 };
 
-class dag_accumulator : public pasched::transformation
-{
-    public:
-    dag_accumulator() {}
-    virtual ~dag_accumulator() {}
-
-    virtual void transform(pasched::schedule_dag& dag, const pasched::scheduler& s, pasched::schedule_chain& c,
-        pasched::transformation_status& status) const
-    {
-        status.begin_transformation();
-        status.set_modified_graph(false);
-        status.set_junction(false);
-        status.set_deadlock(false);
-        
-        pasched::schedule_dag *d = dag.deep_dup();
-        /* accumulate */
-        m_dag.add_units(d->get_units());
-        m_dag.add_dependencies(d->get_deps());
-        delete d;
-        /* forward */
-        s.schedule(dag, c);
-
-        status.end_transformation();
-    }
-
-    pasched::schedule_dag& get_dag() { return m_dag; }
-
-    protected:
-    /* Little hack here. A transformation is not supposed to keep internal state but here
-     * we want to accumulate DAGs scheduled so we keep a mutable var */
-    mutable pasched::generic_schedule_dag m_dag;
-};
-
 void PaScheduleDAG::Schedule()
 {
     // Build the scheduling graph.
@@ -221,38 +188,33 @@ void PaScheduleDAG::Schedule()
     pasched::transformation_pipeline pipeline;
     pasched::transformation_pipeline snd_stage_pipe;
     pasched::transformation_loop loop(&snd_stage_pipe);
-    dag_accumulator accum;
     pipeline.add_stage(new pasched::unique_reg_ids);
     pipeline.add_stage(&loop);
-    pipeline.add_stage(&accum);
+    
     snd_stage_pipe.add_stage(new pasched::strip_dataless_units);
     snd_stage_pipe.add_stage(new pasched::strip_useless_order_deps);
+    snd_stage_pipe.add_stage(new pasched::simplify_order_cuts);
     snd_stage_pipe.add_stage(new pasched::split_def_use_dom_use_deps);
     snd_stage_pipe.add_stage(new pasched::smart_fuse_two_units(false, true));
-    snd_stage_pipe.add_stage(new pasched::simplify_order_cuts);
-    //snd_stage_pipe.add_stage(new pasched::break_symmetrical_branch_merge);
+    snd_stage_pipe.add_stage(new pasched::break_symmetrical_branch_merge);
     snd_stage_pipe.add_stage(new pasched::collapse_chains);
     snd_stage_pipe.add_stage(new pasched::split_merge_branch_units);
 
-    #if 1
-    pasched::basic_list_scheduler basic_sched;
-    pasched::mris_ilp_scheduler sched(&basic_sched);
+    #if 0
+    pasched::simple_rp_scheduler basic_sched;
+    pasched::mris_ilp_scheduler sched(&basic_sched, 1000, true);
+    #elif 1
+    pasched::simple_rp_scheduler basic_sched;
+    pasched::exp_scheduler sched(&basic_sched, 0000, false);
     #else
-    pasched::basic_list_scheduler sched;
+    pasched::simple_rp_scheduler sched;
     #endif
+    
     pasched::generic_schedule_chain chain;
     pasched::basic_status status;
     /* rememember dag for later check */
-    pasched::schedule_dag *dag_copy = dag.dup();
     pipeline.transform(dag, sched, chain, status);
-    //debug_view_dag(*dag_copy);
-    //debug_view_dag(accum.get_dag());
-    dump_schedule_dag_to_lsd_file(*dag_copy, "dag.lsd");
     /* check chain against dag */
-    bool ok = chain.check_against_dag(*dag_copy);
-    delete dag_copy;
-    assert(ok && "Invalid schedule");
-
     for(size_t i = 0; i < chain.get_unit_count(); i++)
         Sequence.push_back(static_cast< const LLVMScheduleUnit * >(chain.get_unit_at(i))->GetSU());
 }
