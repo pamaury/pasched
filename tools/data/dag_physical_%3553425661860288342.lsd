@@ -1,0 +1,32 @@
+Unit 0x34a9130 Name SU(0): CopyToReg [ID=0]\
+    JE_4 [ID=0]
+Unit 0x3490200 Name SU(1): CMP32ri8 [ID=1]
+To 0x34a9130 Latency 1 Kind phys Reg 42
+Unit 0x34a9440 Name SU(2): CopyToReg [ID=2]\
+    CMOVA32rr [ID=2]
+To 0x3490200 Latency 1 Kind data Reg 0
+To 0x34a8080 Latency 1 Kind data Reg 0
+Unit 0x347e560 Name SU(3): CMP32rr [ID=3]
+To 0x34a9440 Latency 1 Kind phys Reg 42
+Unit 0x34a8c20 Name SU(4): MOV32rm<Mem:LD4[@lookahead]> [ORD=432] [ID=4]
+To 0x34a9440 Latency 1 Kind data Reg 0
+To 0x347e560 Latency 1 Kind data Reg 0
+To 0x3497e20 Latency 1 Kind data Reg 0
+Unit 0x3497e70 Name SU(5): CopyToReg [ORD=431] [ID=5]\
+    CALL64pcrel32 [ORD=431] [ID=5]\
+    ADJCALLSTACKUP64 [ORD=431] [ID=5]\
+    CopyFromReg [ORD=431] [ID=5]
+To 0x34a9440 Latency 1 Kind data Reg 0
+To 0x347e560 Latency 1 Kind data Reg 0
+To 0x34a8c20 Latency 1 Kind order
+To 0x3495360 Latency 1 Kind order
+Unit 0x3494e40 Name SU(6): CopyFromReg [ORD=431] [ID=6]
+To 0x3497e70 Latency 1 Kind data Reg 0
+Unit 0x3497fa0 Name SU(7): ADJCALLSTACKDOWN64 [ORD=431] [ID=7]
+To 0x3497e70 Latency 1 Kind order
+Unit 0x3495360 Name SU(8): TokenFactor [ID=8]
+To 0x34a9130 Latency 1 Kind order
+Unit 0x34a8080 Name SU(9): CopyToReg [ID=9]
+To 0x3495360 Latency 1 Kind order
+Unit 0x3497e20 Name SU(10): CopyToReg [ID=10]
+To 0x3495360 Latency 1 Kind order

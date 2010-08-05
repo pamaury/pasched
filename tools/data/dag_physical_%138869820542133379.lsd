@@ -1,0 +1,70 @@
+Unit 0x238a7e0 Name SU(0): CopyToReg [ID=0]\
+    JG_4 [ID=0]
+Unit 0x23916f0 Name SU(1): CMP32rr [ID=1]
+To 0x238a7e0 Latency 1 Kind phys Reg 42
+Unit 0x23156a0 Name SU(2): CopyFromReg [ORD=565] [ID=2]
+To 0x23916f0 Latency 1 Kind data Reg 0
+Unit 0x2324fe0 Name SU(3): EXTRACT_SUBREG [ID=3]
+To 0x23916f0 Latency 1 Kind data Reg 0
+Unit 0x2392d80 Name SU(4): MOVSX64rm32<Mem:LD4[%lsr.iv343346]> [ID=4]
+To 0x2324fe0 Latency 1 Kind data Reg 0
+To 0x2391790 Latency 1 Kind data Reg 0
+To 0x2398ba0 Latency 1 Kind order
+To 0x2263310 Latency 1 Kind data Reg 0
+To 0x235a8c0 Latency 1 Kind data Reg 0
+Unit 0x2384410 Name SU(5): CopyFromReg [ORD=550] [ID=5]
+To 0x2392d80 Latency 1 Kind data Reg 0
+Unit 0x23933c0 Name SU(6): TokenFactor [ID=6]
+To 0x238a7e0 Latency 1 Kind order
+Unit 0x2391790 Name SU(7): MOV16mr<Mem:ST2[%tmp56.i]> [ID=7]
+To 0x23933c0 Latency 1 Kind order
+Unit 0x2398ba0 Name SU(8): TokenFactor [ID=8]
+To 0x2391790 Latency 1 Kind order
+Unit 0x22c6940 Name SU(9): MOVZX32rm16<Mem:LD2[%tmp62.i]> [ID=9]
+To 0x2398ba0 Latency 1 Kind order
+To 0x2392ca0 Latency 1 Kind data Reg 0
+Unit 0x2263310 Name SU(10): MOVZX64rm16<Mem:LD2[%tmp56.i]> [ID=10]
+To 0x2398ba0 Latency 1 Kind order
+To 0x22c6940 Latency 1 Kind data Reg 0
+Unit 0x2263330 Name SU(11): EXTRACT_SUBREG [ORD=564] [ID=11]
+To 0x2391790 Latency 1 Kind data Reg 0
+Unit 0x2393250 Name SU(12): CopyToReg [ID=12]\
+    CMOVG32rr [ID=12]
+To 0x2263330 Latency 1 Kind data Reg 0
+To 0x236e440 Latency 1 Kind data Reg 0
+Unit 0x2355110 Name SU(13): CMP32rr [ID=13]
+To 0x2393250 Latency 1 Kind phys Reg 42
+To 0x235a6c0 Latency 1 Kind phys Reg 42
+Unit 0x2355130 Name SU(14): EXTRACT_SUBREG [ORD=548] [ID=14]
+To 0x2355110 Latency 1 Kind data Reg 0
+Unit 0x236b3f0 Name SU(15): CopyFromReg [ORD=548] [ID=15]
+To 0x2355130 Latency 1 Kind data Reg 0
+Unit 0x2392ae0 Name SU(16): EXTRACT_SUBREG [ORD=549] [ID=16]
+To 0x2393250 Latency 1 Kind data Reg 0
+Unit 0x238a490 Name SU(17): CopyFromReg [ORD=549] [ID=17]
+To 0x2392ae0 Latency 1 Kind data Reg 0
+Unit 0x2392ca0 Name SU(18): INC64_32r [ORD=559] [ID=18]
+To 0x2393250 Latency 1 Kind data Reg 0
+To 0x2355110 Latency 1 Kind data Reg 0
+To 0x235a7c0 Latency 1 Kind data Reg 0
+Unit 0x2349db0 Name SU(19): CopyFromReg [ORD=553] [ID=19]
+To 0x2391790 Latency 1 Kind data Reg 0
+To 0x22c6940 Latency 1 Kind data Reg 0
+To 0x2263310 Latency 1 Kind data Reg 0
+Unit 0x236e440 Name SU(20): CopyToReg [ID=20]
+To 0x23933c0 Latency 1 Kind order
+Unit 0x236e540 Name SU(21): CopyToReg [ID=21]
+To 0x23933c0 Latency 1 Kind order
+Unit 0x2392c10 Name SU(22): ADD32rr [ORD=562] [ID=22]
+To 0x236e540 Latency 1 Kind data Reg 0
+Unit 0x235a4f0 Name SU(23): CopyFromReg [ORD=562] [ID=23]
+To 0x2392c10 Latency 1 Kind data Reg 0
+Unit 0x235a5b0 Name SU(24): MOVZX32rr8 [ID=24]
+To 0x2392c10 Latency 1 Kind data Reg 0
+Unit 0x235a6c0 Name SU(25): CopyToReg [ID=25]\
+    SETGr [ID=25]
+To 0x235a5b0 Latency 1 Kind data Reg 0
+Unit 0x235a7c0 Name SU(26): CopyToReg [ID=26]
+To 0x23933c0 Latency 1 Kind order
+Unit 0x235a8c0 Name SU(27): CopyToReg [ID=27]
+To 0x23933c0 Latency 1 Kind order

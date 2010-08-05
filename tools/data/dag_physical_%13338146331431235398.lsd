@@ -1,0 +1,139 @@
+Unit 0x2959640 Name SU(0): CopyToReg [ID=0]\
+    JE_4 [ID=0]
+Unit 0x2959080 Name SU(1): CMP32ri [ID=1]
+To 0x2959640 Latency 1 Kind phys Reg 42
+Unit 0x2967f20 Name SU(2): INC64_32r [ORD=26] [ID=2]
+To 0x2959080 Latency 1 Kind data Reg 0
+To 0x29cffe0 Latency 1 Kind data Reg 0
+To 0x29d0340 Latency 1 Kind data Reg 0
+Unit 0x296c330 Name SU(3): EXTRACT_SUBREG [ID=3]
+To 0x2967f20 Latency 1 Kind data Reg 0
+Unit 0x2969ea0 Name SU(4): MOVZX64rm32<Mem:LD4[@outcnt]> [ID=4]
+To 0x296c330 Latency 1 Kind data Reg 0
+To 0x27fed40 Latency 1 Kind data Reg 0
+To 0x29d0100 Latency 1 Kind order
+Unit 0x29589f0 Name SU(5): CopyToReg [ORD=23] [ID=5]\
+    CopyToReg [ORD=23] [ID=5]\
+    CALL64pcrel32 [ORD=23] [ID=5]\
+    ADJCALLSTACKUP64 [ORD=23] [ID=5]
+To 0x2969ea0 Latency 1 Kind order
+To 0x27fec30 Latency 1 Kind order
+To 0x29d0210 Latency 1 Kind order
+Unit 0x295c700 Name SU(6): LEA64r [ORD=4] [ID=6]
+To 0x29589f0 Latency 1 Kind data Reg 0
+Unit 0x29674b0 Name SU(7): MOV32rm<Mem:LD4[@level]> [ORD=22] [ID=7]
+To 0x29589f0 Latency 1 Kind data Reg 0
+To 0x27fec10 Latency 1 Kind order
+Unit 0x2956d20 Name SU(8): CopyToReg [ORD=22] [ID=8]\
+    CopyToReg [ORD=22] [ID=8]\
+    CALL64pcrel32 [ORD=22] [ID=8]\
+    ADJCALLSTACKUP64 [ORD=22] [ID=8]
+To 0x29674b0 Latency 1 Kind order
+Unit 0x295a950 Name SU(9): MOV64ri64i32 [ID=9]
+To 0x2956d20 Latency 1 Kind data Reg 0
+Unit 0x2987b70 Name SU(10): LEA64r [ORD=4] [ID=10]
+To 0x2956d20 Latency 1 Kind data Reg 0
+Unit 0x2955ff0 Name SU(11): ADJCALLSTACKDOWN64 [ORD=22] [ID=11]
+To 0x2956d20 Latency 1 Kind order
+Unit 0x295e190 Name SU(12): CopyToReg [ORD=22] [ID=12]\
+    CALL64pcrel32 [ORD=22] [ID=12]\
+    ADJCALLSTACKUP64 [ORD=22] [ID=12]
+To 0x2955ff0 Latency 1 Kind order
+Unit 0x295e0e0 Name SU(13): CopyFromReg [ORD=4] [ID=13]
+To 0x295e190 Latency 1 Kind data Reg 0
+To 0x295cd00 Latency 1 Kind data Reg 0
+Unit 0x29ce990 Name SU(14): ADJCALLSTACKDOWN64 [ORD=22] [ID=14]
+To 0x295e190 Latency 1 Kind order
+Unit 0x29ce9b0 Name SU(15): TokenFactor [ID=15]
+To 0x29ce990 Latency 1 Kind order
+Unit 0x29cea80 Name SU(16): CopyToReg [ORD=21] [ID=16]\
+    CopyToReg [ORD=21] [ID=16]\
+    CALL64pcrel32 [ORD=21] [ID=16]\
+    ADJCALLSTACKUP64 [ORD=21] [ID=16]\
+    CopyFromReg [ORD=21] [ID=16]
+To 0x29ce9b0 Latency 1 Kind order
+To 0x27feaf0 Latency 1 Kind data Reg 0
+To 0x27feaf0 Latency 1 Kind order
+Unit 0x296ba90 Name SU(17): MOV32r0 [ORD=5] [ID=17]
+To 0x29cea80 Latency 1 Kind data Reg 0
+Unit 0x296bbe0 Name SU(18): MOV64r0 [ORD=21] [ID=18]
+To 0x29cea80 Latency 1 Kind data Reg 0
+Unit 0x296bc60 Name SU(19): ADJCALLSTACKDOWN64 [ORD=21] [ID=19]
+To 0x29cea80 Latency 1 Kind order
+Unit 0x2966090 Name SU(20): MOV8mr<Mem:ST1[getelementptr inbounds ([0 x i8]* @outbuf, i64 0, i64 7)]> [ORD=21] [ID=20]
+To 0x296bc60 Latency 1 Kind order
+Unit 0x2966150 Name SU(21): MOV32mi<Mem:ST4[@outcnt]> [ORD=21] [ID=21]
+To 0x2966090 Latency 1 Kind order
+Unit 0x295ce90 Name SU(22): MOV8mr<Mem:ST1[getelementptr inbounds ([0 x i8]* @outbuf, i64 0, i64 6)](align=2)> [ORD=21] [ID=22]
+To 0x2966150 Latency 1 Kind order
+Unit 0x295cf10 Name SU(23): MOV8mr_NOREX<Mem:ST1[getelementptr inbounds ([0 x i8]* @outbuf, i64 0, i64 5)]> [ORD=21] [ID=23]
+To 0x295ce90 Latency 1 Kind order
+Unit 0x295d070 Name SU(24): MOV8mr<Mem:ST1[getelementptr inbounds ([0 x i8]* @outbuf, i64 0, i64 4)](align=4)> [ORD=21] [ID=24]
+To 0x295cf10 Latency 1 Kind order
+Unit 0x2968ac0 Name SU(25): MOV64rm<Mem:LD8[@time_stamp]> [ORD=8] [ID=25]
+To 0x295d070 Latency 1 Kind order
+To 0x296e480 Latency 1 Kind data Reg 0
+To 0x29fb7f0 Latency 1 Kind data Reg 0
+To 0x296b730 Latency 1 Kind data Reg 0
+To 0x296ba10 Latency 1 Kind data Reg 0
+Unit 0x295b150 Name SU(26): MOV8mr<Mem:ST1[getelementptr inbounds ([0 x i8]* @outbuf, i64 0, i64 3)]> [ORD=8] [ID=26]
+To 0x2968ac0 Latency 1 Kind order
+Unit 0x295aec0 Name SU(27): CMP32mi8<Mem:LD4[@save_orig_name]> [ID=27]
+To 0x295b150 Latency 1 Kind order
+To 0x295a250 Latency 1 Kind phys Reg 42
+Unit 0x295aee0 Name SU(28): MOV8mi<Mem:ST1[getelementptr inbounds ([0 x i8]* @outbuf, i64 0, i64 2)](align=2)> [ORD=4] [ID=28]
+To 0x295aec0 Latency 1 Kind order
+Unit 0x295e760 Name SU(29): MOV8mi<Mem:ST1[getelementptr inbounds ([0 x i8]* @outbuf, i64 0, i64 1)]> [ORD=4] [ID=29]
+To 0x295aee0 Latency 1 Kind order
+Unit 0x295ca50 Name SU(30): MOV8mi<Mem:ST1[getelementptr inbounds ([0 x i8]* @outbuf, i64 0, i64 0)]> [ORD=4] [ID=30]
+To 0x295e760 Latency 1 Kind order
+Unit 0x295cce0 Name SU(31): MOV32mi<Mem:ST4[@method]> [ORD=4] [ID=31]
+To 0x295ca50 Latency 1 Kind order
+Unit 0x295cd00 Name SU(32): MOV32mr<Mem:ST4[@ofd]> [ORD=4] [ID=32]
+To 0x295cce0 Latency 1 Kind order
+Unit 0x2959a40 Name SU(33): MOV32mr<Mem:ST4[@ifd]> [ORD=4] [ID=33]
+To 0x295cd00 Latency 1 Kind order
+Unit 0x295de10 Name SU(34): MOV16mi<Mem:ST2[%deflate_flags]> [ORD=4] [ID=34]
+To 0x2959a40 Latency 1 Kind order
+Unit 0x295df00 Name SU(35): MOV16mi<Mem:ST2[%attr]> [ORD=4] [ID=35]
+To 0x295de10 Latency 1 Kind order
+Unit 0x2956fe0 Name SU(36): CopyFromReg [ORD=4] [ID=36]
+To 0x2959a40 Latency 1 Kind data Reg 0
+Unit 0x295a230 Name SU(37): SHL8ri [ID=37]
+To 0x295b150 Latency 1 Kind data Reg 0
+Unit 0x295a250 Name SU(38): CopyToReg [ID=38]\
+    SETNEr [ID=38]
+To 0x295a230 Latency 1 Kind data Reg 0
+Unit 0x296e480 Name SU(39): EXTRACT_SUBREG [ORD=9] [ID=39]
+To 0x295d070 Latency 1 Kind data Reg 0
+Unit 0x296e630 Name SU(40): EXTRACT_SUBREG [ID=40]
+To 0x295cf10 Latency 1 Kind data Reg 0
+Unit 0x29fb7d0 Name SU(41): COPY_TO_REGCLASS [ID=41]
+To 0x296e630 Latency 1 Kind data Reg 0
+Unit 0x29fb7f0 Name SU(42): EXTRACT_SUBREG [ORD=11] [ID=42]
+To 0x29fb7d0 Latency 1 Kind data Reg 0
+Unit 0x29fb940 Name SU(43): EXTRACT_SUBREG [ORD=16] [ID=43]
+To 0x295ce90 Latency 1 Kind data Reg 0
+Unit 0x296b730 Name SU(44): SHR64ri [ORD=15] [ID=44]
+To 0x29fb940 Latency 1 Kind data Reg 0
+Unit 0x296b890 Name SU(45): EXTRACT_SUBREG [ORD=19] [ID=45]
+To 0x2966090 Latency 1 Kind data Reg 0
+Unit 0x296ba10 Name SU(46): SHR64ri [ORD=18] [ID=46]
+To 0x296b890 Latency 1 Kind data Reg 0
+Unit 0x27feaf0 Name SU(47): MOV64mr<Mem:ST8[@crc]> [ORD=22] [ID=47]
+To 0x29ce9b0 Latency 1 Kind order
+Unit 0x27fec10 Name SU(48): ADJCALLSTACKDOWN64 [ORD=23] [ID=48]
+To 0x29589f0 Latency 1 Kind order
+Unit 0x27fec30 Name SU(49): TokenFactor [ID=49]
+To 0x2959640 Latency 1 Kind order
+Unit 0x27fed40 Name SU(50): MOV8mr<Mem:ST1[%arrayidx145]> [ID=50]
+To 0x27fec30 Latency 1 Kind order
+Unit 0x29cffe0 Name SU(51): MOV32mr<Mem:ST4[@outcnt]> [ID=51]
+To 0x27fed40 Latency 1 Kind order
+Unit 0x29d0100 Name SU(52): TokenFactor [ID=52]
+To 0x29cffe0 Latency 1 Kind order
+Unit 0x29d0210 Name SU(53): MOV8rm<Mem:LD1[%deflate_flags](align=2)> [ID=53]
+To 0x27fed40 Latency 1 Kind data Reg 0
+To 0x29d0100 Latency 1 Kind order
+Unit 0x29d0340 Name SU(54): CopyToReg [ID=54]
+To 0x27fec30 Latency 1 Kind order
