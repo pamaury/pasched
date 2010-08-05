@@ -143,7 +143,13 @@ class dag_accumulator : public pasched::transformation
 class handle_physical_regs : public pasched::transformation
 {
     public:
-    handle_physical_regs() {}
+    /**
+     * promote_phys_to_virt means that when a physical register is proved to have
+     * the same semantics has a virtual one (that is when it can't overlap another
+     * physical register with the same ID) then it is promoted to a virtual register.
+     * This is useful because some code might not handle physical regs so it would be
+     * stupid to skip optmizations is cases where it doesn't change anything */
+    handle_physical_regs(bool promote_phys_to_virt = true) : m_promote(promote_phys_to_virt) {}
     virtual ~handle_physical_regs() {}
 
     virtual void transform(pasched::schedule_dag& dag, const pasched::scheduler& s, pasched::schedule_chain& c,
@@ -151,6 +157,7 @@ class handle_physical_regs : public pasched::transformation
     {
         typedef std::vector< std::pair< const pasched::schedule_unit *, const pasched::schedule_unit * > > reg_problem_list;
         typedef std::map< pasched::schedule_dep::reg_t, reg_problem_list > reg_problem_map;
+        typedef std::map< pasched::schedule_dep::reg_t, std::set< const pasched::schedule_unit * > > reg_creator_list;
         bool modified = false;
         reg_problem_map problems;
 
@@ -171,52 +178,55 @@ class handle_physical_regs : public pasched::transformation
         
         status.begin_transformation();
 
+        debug_view_dag(dag);
+
         /* build a map of physical registers creators */
-        std::map< pasched::schedule_dep::reg_t, std::set< const pasched::schedule_unit * > > physical_reg_creators;
+        reg_creator_list reg_creators;
         std::vector< pasched::schedule_dep::reg_t > several_creators;
         for(size_t i = 0; i < dag.get_deps().size(); i++)
-            if(dag.get_deps()[i].kind() == pasched::schedule_dep::data_dep && dag.get_deps()[i].reg() != 0)
+            if(dag.get_deps()[i].is_phys())
             {
-                physical_reg_creators[dag.get_deps()[i].reg()].insert(dag.get_deps()[i].from());
-                if(physical_reg_creators[dag.get_deps()[i].reg()].size() == 2)
+                reg_creators[dag.get_deps()[i].reg()].insert(dag.get_deps()[i].from());
+                if(reg_creators[dag.get_deps()[i].reg()].size() == 2)
                     several_creators.push_back(dag.get_deps()[i].reg());
             }
         
-        /* Physical registers are *very* special, treat them differently */
+        /* If no physical register has several creators, just promote them all and go on */
         if(several_creators.size() == 0)
-            goto Lno_work;
-
-        /*
-        for(size_t i = 0; i < several_creators.size(); i++)
-        {
-            pasched::schedule_dep::reg_t reg = several_creators[i];
-            std::cout << "Register " << reg << " has the following creators:\n";
-            std::set< const pasched::schedule_unit * >::iterator it;
-            for(it = physical_reg_creators[reg].begin(); it != physical_reg_creators[reg].end(); ++it)
-                std::cout << "  " << (*it)->to_string() << "\n";
-        }
-        */
+            goto Lpromote_all;
 
         /* We are here because at least one physical register used twice or more.
          * Hopefully, in a number of cases, this is a false positive because the
          * natural ordering will prevent them from interfering.
-         * Check this for each register */
+         * Check this for each register.
+         * Loop because we add edges for detected partial order which can change things */
+        while(true)
         {
+            reg_problem_map partials;
+            /* create path map */
+            std::vector< std::vector< bool > > path;
+            std::map< const pasched::schedule_unit *, size_t> name_map;
+            dag.build_path_map(path, name_map);
+            
             for(size_t i = 0; i < several_creators.size(); i++)
             {
                 pasched::schedule_dep::reg_t reg = several_creators[i];
-                std::vector< const pasched::schedule_unit * > creators = pasched::set_to_vector(physical_reg_creators[reg]);
-                /* create path map */
-                std::vector< std::vector< bool > > path;
-                std::map< const pasched::schedule_unit *, size_t> name_map;
-
-                dag.build_path_map(path, name_map);
+                std::vector< const pasched::schedule_unit * > creators = pasched::set_to_vector(reg_creators[reg]);
+                
                 /* Create interferance map */
+                /* C interfere with C' if it's possible to schedule C, C' and their use such has the
+                 * same physical register is alive and created by both C and C' at the same time
+                 *
+                 * C has partial order with C' if the dependencies suggest that C and its uses must be
+                 * schedule before C' but we need to add more dependencies to enforce that */
                 std::vector< std::vector< bool > > interfere;
+                std::vector< std::vector< bool > > partial_order;
                 interfere.resize(creators.size());
+                partial_order.resize(creators.size());
                 for(size_t i = 0; i < interfere.size(); i++)
                 {
                     interfere[i].resize(creators.size(), true); /* interfere unless proven the contrary */
+                    partial_order[i].resize(creators.size());
                     interfere[i][i] = false;
                 }
 
@@ -236,40 +246,111 @@ class handle_physical_regs : public pasched::transformation
                         /* now to prove that C does not intefere with D, we must ensure that
                          * any use of the physical register created by C has a path to D
                          * So consider every succ S of C with physical reg dep */
+                        bool inter = false;
+                        bool partial = false;
                         for(size_t k = 0; k < dag.get_succs(other).size(); k++)
                         {
                             const pasched::schedule_dep& dep = dag.get_succs(other)[k];
-                            if(dep.kind() != pasched::schedule_dep::data_dep || dep.reg() != reg)
+                            if(!dep.is_phys() || dep.reg() != reg)
                                 continue;
                             const pasched::schedule_unit *use = dep.to();
                             /* if there is no path from S to D, then they might interfere */
-                            if(!path[name_map[creator]][name_map[use]])
-                                goto Linterfere;
+                            if(!path[name_map[use]][name_map[creator]])
+                                inter = true;
+                            /* if there is a path from C to S, then it means that C has a partial order
+                             * with S */
+                            if(path[name_map[creator]][name_map[use]])
+                                partial = true;
                         }
                         /* we proved they do not interfere */
-                        interfere[i][j] = false;
-                        interfere[j][i] = false;
-
-                        Linterfere:
-                        continue;
+                        if(!inter)
+                        {
+                            interfere[i][j] = false;
+                            interfere[j][i] = false;
+                        }
+                        if(partial)
+                            partial_order[i][j] = true;
                     }
                 }
 
                 /* Make a summary of interferance pairs */
                 reg_problem_list problem_list;
+                reg_problem_list partial_list;
                 /* the map must be symmetrical at this point */
                 for(size_t i = 0; i < creators.size(); i++)
                     for(size_t j = i + 1; j < creators.size(); j++)
                         if(interfere[i][j])
-                            problem_list.push_back(std::make_pair(creators[i], creators[j]));
+                        {
+                            if(partial_order[i][j])
+                                partial_list.push_back(std::make_pair(creators[i], creators[j]));
+                            else if(partial_order[j][i])
+                                partial_list.push_back(std::make_pair(creators[j], creators[i]));
+                            else
+                                problem_list.push_back(std::make_pair(creators[i], creators[j]));
+                            
+                        }
 
                 if(problem_list.size() != 0)
                     problems[reg] = problem_list;
+                if(partial_list.size() != 0)
+                    partials[reg] = partial_list;
+            }
+
+            if(partials.size() == 0)
+                break;
+            /* Enforce partial orders */
+            for(reg_problem_map::iterator it = partials.begin(); it != partials.end(); ++it)
+            {
+                reg_problem_list& l = it->second;
+                for(size_t i = 0; i < l.size(); i++)
+                {
+                    const pasched::schedule_unit *c_from = l[i].first;
+                    const pasched::schedule_unit *c_to = l[i].second;
+                    /* for each successor S of C_from on register R, add a dependency
+                     * from S to C_to */
+                    for(size_t i = 0; i < dag.get_succs(c_from).size(); i++)
+                    {
+                        const pasched::schedule_dep& dep = dag.get_succs(c_from)[i];
+                        if(dep.is_phys() && dep.reg() == it->first &&
+                                !path[name_map[dep.to()]][name_map[c_to]])
+                        {
+                            dag.add_dependency(
+                                pasched::schedule_dep(
+                                    dep.to(), c_to, pasched::schedule_dep::order_dep));
+                        }
+                    }
+                }
+            }
+            /* continue the loop */
+        }
+        /* If there are no more problem, just promote them all */
+        if(problems.size() == 0)
+            goto Lpromote_all;
+        /* Ok, do a partial promoting of all creators which are not in the problem list */
+        {
+            /* list all (reg,creators) pairs in problem list */
+            std::set< std::pair< pasched::schedule_dep::reg_t, const pasched::schedule_unit * > > problematic_pairs;
+            for(reg_problem_map::iterator it = problems.begin(); it != problems.end(); ++it)
+            {
+                reg_problem_list& l = it->second;
+
+                for(size_t i = 0; i < l.size(); i++)
+                {
+                    problematic_pairs.insert(std::make_pair(it->first, l[i].first));
+                    problematic_pairs.insert(std::make_pair(it->first, l[i].second));
+                }
+            }
+            /* list all creators and promote them if there are not in a problematic pair */
+            for(reg_creator_list::iterator it = reg_creators.begin(); it != reg_creators.end(); ++it)
+            {
+                std::set< const pasched::schedule_unit * >::iterator it2;
+                for(it2 = it->second.begin(); it2 != it->second.end(); ++it2)
+                    if(problematic_pairs.find(std::make_pair(it->first, *it2)) == problematic_pairs.end())
+                        promote_phys_register(dag, *it2, it->first, modified);
             }
         }
-        /* still problems ? */
-        if(problems.size() == 0)
-            goto Lno_work;
+        
+        /* display */
         std::cout << "Problem list:\n";
         for(reg_problem_map::iterator it = problems.begin(); it != problems.end(); ++it)
         {
@@ -283,21 +364,21 @@ class handle_physical_regs : public pasched::transformation
             }
         }
         
+        goto Lcont;
+
+        Lpromote_all:
+        /* promote all physical register */
         {
-            std::vector< pasched::dag_printer_opt > opts;
-            for(size_t i = 0; i < dag.get_deps().size(); i++)
-                if(dag.get_deps()[i].reg() != 0)
-                {
-                    pasched::dag_printer_opt o;
-                    o.type = pasched::dag_printer_opt::po_color_dep;
-                    o.color_dep.dep = dag.get_deps()[i];
-                    o.color_dep.color = "red";
-                    opts.push_back(o);
-                }
-            debug_view_dag(dag, opts);
+            for(reg_creator_list::iterator it = reg_creators.begin(); it != reg_creators.end(); ++it)
+            {
+                std::set< const pasched::schedule_unit * >::iterator it2;
+                for(it2 = it->second.begin(); it2 != it->second.end(); ++it2)
+                    promote_phys_register(dag, *it2, it->first, modified);
+            }
         }
 
-        Lno_work:
+        Lcont:
+        debug_view_dag(dag);
         status.set_modified_graph(modified);
         status.set_junction(false);
         status.set_deadlock(false);
@@ -307,6 +388,37 @@ class handle_physical_regs : public pasched::transformation
 
         status.end_transformation();
     }
+
+    protected:
+    void promote_phys_register(
+        pasched::schedule_dag& dag,
+        const pasched::schedule_unit *unit,
+        pasched::schedule_dep::reg_t reg,
+        bool& modified) const
+    {
+        if(!m_promote)
+            return;
+        std::vector< pasched::schedule_dep > to_remove;
+        std::vector< pasched::schedule_dep > to_add;
+        pasched::schedule_dep::reg_t id = dag.generate_unique_reg_id();
+
+        for(size_t i = 0; i < dag.get_succs(unit).size(); i++)
+        {
+            pasched::schedule_dep dep = dag.get_succs(unit)[i];
+            if(!dep.is_phys() || dep.reg() != reg)
+                continue;
+            to_remove.push_back(dep);
+            dep.set_kind(pasched::schedule_dep::virt_dep);
+            dep.set_reg(id);
+            to_add.push_back(dep);
+        }
+
+        dag.remove_dependencies(to_remove);
+        dag.add_dependencies(to_add);
+        modified = true;
+    }
+    
+    bool m_promote;
 };
 
 /**
@@ -423,8 +535,6 @@ int __main(int argc, char **argv)
         return 1;
     }
     TM_STOP(dtm_read)
-
-    debug_view_dag(dag);
 
     pasched::transformation_pipeline pipeline;
     pasched::transformation_pipeline snd_stage_pipe;
