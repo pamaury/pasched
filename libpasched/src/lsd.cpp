@@ -45,10 +45,12 @@ void dump_schedule_dag_to_lsd_stream(const schedule_dag& dag, std::ostream& fout
         {
             const schedule_dep& dep = dag.get_succs(unit)[i];
             fout << "To " << (void *)dep.to() << " Latency 1 Kind ";
-            if(dep.kind() == schedule_dep::data_dep)
+            if(dep.is_virt())
                 fout << "data Reg " << dep.reg() << "\n";
-            else if(dep.kind() == schedule_dep::order_dep)
+            else if(dep.is_order())
                 fout << "order\n";
+            else if(dep.is_phys())
+                fout << "phys\n";
         }
     }
 }
@@ -158,19 +160,19 @@ void build_schedule_dag_from_lsd_stream(std::istream& fin, schedule_dag& dag)
                     throw std::runtime_error("illformed lsd file: To line type with extra data at the end ('" + line + "')");
                 d.set_kind(schedule_dep::order_dep);
             }
-            else if(kind == "data")
+            else if(kind == "data" || kind == "phys")
             {
                 if(line.substr(0, 4) != "Reg ")
-                    throw std::runtime_error("illformed lsd file: To line type with no data reg ('" + line + "')");
+                    throw std::runtime_error("illformed lsd file: To line type with no data/phys reg ('" + line + "')");
                 line = trim(line.substr(4));
                 if(line.find(" ") != std::string::npos)
-                    throw std::runtime_error("illformed lsd file: To line type with extra data at the end ('" + line + "')");
+                    throw std::runtime_error("illformed lsd file: To line type with extra data/phys at the end ('" + line + "')");
                 std::istringstream iss(line);
                 int reg;
                 if(!(iss >> reg) || !iss.eof())
                     throw std::runtime_error("illformed lsd file: To line type with invalid reg ('" + line + "')");
                 d.set_reg(reg);
-                d.set_kind(schedule_dep::data_dep);
+                d.set_kind(kind == "data" ? schedule_dep::virt_dep : schedule_dep::phys_dep);
             }
             else
                 throw std::runtime_error("illformed lsd file: To line type with bad kind ('" + line + "')");

@@ -15,8 +15,18 @@ class schedule_dep
     public:
     enum dep_kind
     {
-        data_dep, // data dependency: register
-        order_dep // other: memory, artificial, ...
+        /** virtual reg dependency: a virtual register */
+        virt_dep,
+        /** order dependency: encompass any dependency that imposes an order:
+         * - memory dependency
+         * - articiel dependency
+         * - whatever */
+        order_dep,
+        /** physical reg dependency: a physical register
+         * This is a kind of register that bites you when you approach too close
+         * and that burn your CPU when it encounters another physical
+         * register with the same number; you want to get ride of them fast if possible. */
+        phys_dep
     };
 
     typedef unsigned reg_t;
@@ -36,18 +46,28 @@ class schedule_dep
     inline reg_t reg() const { return m_reg; }
     inline void set_reg(reg_t r) { m_reg = r; }
 
+    inline bool is_order() const { return m_kind == order_dep; }
+    inline bool is_virt() const { return m_kind == virt_dep; }
+    inline bool is_phys() const { return m_kind == phys_dep; }
+    inline bool is_data() const { return is_virt() || is_phys(); }
+
     inline const schedule_unit *from() const { return m_from; }
     inline void set_from(const schedule_unit *u) { m_from = u; }
 
     inline const schedule_unit *to() const { return m_to; }
     inline void set_to(const schedule_unit *u) { m_to = u; }
 
-    bool operator==(const schedule_dep& d) const
+    inline bool operator==(const schedule_dep& d) const
     {
         return m_from == d.m_from &&
                 m_to == d.m_to &&
                 m_kind == d.m_kind &&
-                m_reg == d.m_reg;
+                (!is_data() || m_reg == d.m_reg);
+    }
+
+    inline bool operator!=(const schedule_dep& d) const
+    {
+        return !operator==(d);
     }
 
     static reg_t generate_unique_reg_id();
@@ -56,7 +76,7 @@ class schedule_dep
     const schedule_unit *m_from;
     const schedule_unit *m_to;
     dep_kind m_kind;
-    reg_t m_reg; // the register for dependencies, 0 otherwise (memory, artificial, ...)
+    reg_t m_reg; // the register for {data,physical} dependencies, 0 otherwise (memory, artificial, ...)
 
     static reg_t g_unique_reg_id;
 };

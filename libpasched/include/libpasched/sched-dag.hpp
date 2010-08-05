@@ -221,7 +221,9 @@ struct dag_printer_opt
     enum dag_printer_opt_type
     {
         /* Color a node */
-        po_color_node
+        po_color_node,
+        /* Color a dependency */
+        po_color_dep
     };
 
     dag_printer_opt_type type;
@@ -232,6 +234,13 @@ struct dag_printer_opt
         /* Which color */
         std::string color;
     }color_node;
+    struct
+    {
+        /* Which dep (will match all of them !) */
+        schedule_dep dep;
+        /* Which color */
+        std::string color;
+    }color_dep;
 };
 
 void dump_schedule_dag_to_dot_file(const schedule_dag& dag,

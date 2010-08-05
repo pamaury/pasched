@@ -33,6 +33,8 @@ class schedule_chain
     virtual void append_unit(const schedule_unit *unit) = 0;
 
     virtual bool check_against_dag(const schedule_dag& dag) const;
+
+    virtual void clear() = 0;
     /**
      * Compute the register pressure of the chain with respect to a DAG.
      * If ignore_external_reg is set to true, it is like if the DAG was restricted to the nodes of the chain.
@@ -64,6 +66,8 @@ class generic_schedule_chain : public schedule_chain
     virtual void append_unit(const schedule_unit *unit);
     
     virtual const std::vector<const schedule_unit *>& get_units() const;
+
+    virtual void clear();
 
     protected:
     std::vector<const schedule_unit *> m_units;

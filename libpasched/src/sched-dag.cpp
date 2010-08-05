@@ -103,18 +103,18 @@ std::set< const schedule_unit * > schedule_dag::get_reachable(const schedule_uni
         for(size_t i = 0; i < get_preds(u).size(); i++)
         {
             const schedule_dep& d = get_preds(u)[i];
-            if(d.kind() == schedule_dep::data_dep && (flags & rf_follow_preds_data))
+            if(d.is_data() && (flags & rf_follow_preds_data))
                 q.push(d.from());
-            else if(d.kind() == schedule_dep::order_dep && (flags & rf_follow_preds_order))
+            else if(d.is_order() && (flags & rf_follow_preds_order))
                 q.push(d.from());
         }
 
         for(size_t i = 0; i < get_succs(u).size(); i++)
         {
             const schedule_dep& d = get_succs(u)[i];
-            if(d.kind() == schedule_dep::data_dep && (flags & rf_follow_succs_data))
+            if(d.is_data() && (flags & rf_follow_succs_data))
                 q.push(d.to());
-            else if(d.kind() == schedule_dep::order_dep && (flags & rf_follow_succs_order))
+            else if(d.is_order() && (flags & rf_follow_succs_order))
                 q.push(d.to());
         }
     }
@@ -127,7 +127,7 @@ std::set< schedule_dep::reg_t > schedule_dag::get_reg_create(
 {
     std::set< schedule_dep::reg_t > s;
     for(size_t i = 0; i < get_succs(unit).size(); i++)
-        if(get_succs(unit)[i].kind() == schedule_dep::data_dep)
+        if(get_succs(unit)[i].is_data())
             s.insert(get_succs(unit)[i].reg());
     return s;
 }
@@ -137,7 +137,7 @@ std::set< schedule_dep::reg_t > schedule_dag::get_reg_use(
 {
     std::set< schedule_dep::reg_t > s;
     for(size_t i = 0; i < get_preds(unit).size(); i++)
-        if(get_preds(unit)[i].kind() == schedule_dep::data_dep)
+        if(get_preds(unit)[i].is_data())
             s.insert(get_preds(unit)[i].reg());
     return s;
 }
@@ -149,12 +149,12 @@ std::set< schedule_dep::reg_t > schedule_dag::get_reg_destroy(
     for(size_t i = 0; i < get_preds(unit).size(); i++)
     {
         const schedule_dep& dep = get_preds(unit)[i];
-        if(dep.kind() != schedule_dep::data_dep)
+        if(!dep.is_data())
             continue;
         for(size_t j = 0; j < get_succs(dep.from()).size(); j++)
         {
             const schedule_dep& sec_dep = get_succs(dep.from())[j];
-            if(sec_dep.kind() == schedule_dep::data_dep &&
+            if(sec_dep.is_data() &&
                     sec_dep.reg() == dep.reg() &&
                     sec_dep.to() != unit)
                 goto Lnot_destroy;
@@ -183,7 +183,7 @@ std::set< schedule_dep::reg_t > schedule_dag::get_reg_destroy_exact(
     {
         const schedule_dep& dep = get_preds(unit)[i];
         /* skip dep of it's not a data one */
-        if(dep.kind() != schedule_dep::data_dep)
+        if(!dep.is_data())
             continue;
         /* For each successor S of P */
         for(size_t j = 0; j < get_succs(dep.from()).size(); j++)
@@ -192,7 +192,7 @@ std::set< schedule_dep::reg_t > schedule_dag::get_reg_destroy_exact(
             /* if the P->S link uses the same register as P->U and P<>U
              * then the register has another use, so we need a complete
              * analysis */
-            if(sec_dep.kind() == schedule_dep::data_dep &&
+            if(sec_dep.is_data() &&
                     sec_dep.reg() == dep.reg() &&
                     sec_dep.to() != unit)
             {
@@ -232,7 +232,7 @@ std::set< schedule_dep::reg_t > schedule_dag::get_reg_dont_destroy_exact(
     {
         const schedule_dep& dep = get_preds(unit)[i];
         /* skip dep of it's not a data one */
-        if(dep.kind() != schedule_dep::data_dep)
+        if(!dep.is_data())
             continue;
         /* For each successor S of P */
         for(size_t j = 0; j < get_succs(dep.from()).size(); j++)
@@ -241,7 +241,7 @@ std::set< schedule_dep::reg_t > schedule_dag::get_reg_dont_destroy_exact(
             /* if the P->S link uses the same register as P->U and P<>U
              * then the register has another use, so we need a complete
              * analysis */
-            if(sec_dep.kind() == schedule_dep::data_dep &&
+            if(sec_dep.is_data() &&
                     sec_dep.reg() == dep.reg() &&
                     sec_dep.to() != unit)
             {
@@ -493,12 +493,12 @@ void schedule_dag::remove_redundant_data_dep_preds(const schedule_unit *unit)
     for(size_t i = 0; i < get_preds(unit).size(); i++)
     {
         const schedule_dep& dep = get_preds(unit)[i];
-        if(dep.kind() != schedule_dep::data_dep)
+        if(!dep.is_data())
             continue;
         for(size_t j = i + 1; j < get_preds(unit).size(); j++)
         {
             const schedule_dep& dep2 = get_preds(unit)[j];
-            if(dep2.kind() != schedule_dep::data_dep)
+            if(!dep2.is_data())
                 continue;
             if(dep.reg() != dep2.reg())
                 continue;
@@ -520,12 +520,12 @@ void schedule_dag::remove_redundant_data_dep_succs(const schedule_unit *unit)
     for(size_t i = 0; i < get_succs(unit).size(); i++)
     {
         const schedule_dep& dep = get_succs(unit)[i];
-        if(dep.kind() != schedule_dep::data_dep)
+        if(!dep.is_data())
             continue;
         for(size_t j = i + 1; j < get_succs(unit).size(); j++)
         {
             const schedule_dep& dep2 = get_succs(unit)[j];
-            if(dep2.kind() != schedule_dep::data_dep)
+            if(!dep2.is_data())
                 continue;
             if(dep.reg() == dep2.reg() && dep.to() == dep2.to())
             {

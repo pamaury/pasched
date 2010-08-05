@@ -325,7 +325,11 @@ class collapse_chains : public transformation
 };
 
 /**
- *
+ * If the graph consist of two subgraphs G and H with one articulation node x
+ * such that each node in G has a directed path to x and each node y in H
+ * has a directed path from x, then we can safely schedule G then H because
+ * any schedule node in H reauires x to be schedule which thus require that
+ * G be scheduled a whole. So we split x and the graph into two subgraphs
  */
 class split_merge_branch_units : public transformation
 {

@@ -101,7 +101,7 @@ size_t schedule_chain::compute_rp_against_dag(const schedule_dag& dag, bool igno
             for(size_t i = 0; i < dag.get_succs(unit).size(); i++)
             {
                 const schedule_dep& dep = dag.get_succs(unit)[i];
-                if(dep.kind() == schedule_dep::data_dep && dep.reg() == *it)
+                if(dep.is_data() && dep.reg() == *it)
                     nb_use_left[*it]++;
             }
         }
@@ -214,6 +214,11 @@ void generic_schedule_chain::append_unit(const schedule_unit *unit)
 const std::vector<const schedule_unit *>& generic_schedule_chain::get_units() const
 {
     return m_units;
+}
+
+void generic_schedule_chain::clear()
+{
+    m_units.clear();
 }
 
 }

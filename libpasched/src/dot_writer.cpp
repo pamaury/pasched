@@ -60,6 +60,35 @@ namespace
             fout << tab << "color = \"" << opts[i].color_node.color << "\"\n";
         }
     }
+
+    void emit_dep_color_and_style(std::ofstream& fout, const std::string& tab,
+        const std::vector< dag_printer_opt >& opts, const schedule_dep& dep)
+    {
+        bool has_color = false;
+        for(size_t i = 0; i < opts.size(); i++)
+        {
+            if(opts[i].type != dag_printer_opt::po_color_dep)
+                continue;
+            if(opts[i].color_dep.dep != dep)
+                continue;
+            fout << tab << tab << "color = \"" << opts[i].color_dep.color << "\"\n";
+            has_color = true;
+            break;
+        }
+
+        if(dep.kind() == schedule_dep::order_dep)
+        {
+            if(!has_color)
+                fout << tab << tab << "color = blue\n";
+            fout << tab << tab << "style = dashed\n";
+        }
+        else if(dep.kind() == schedule_dep::phys_dep)
+        {
+            if(!has_color)
+                fout << tab << tab << "color = red\n";
+            fout << tab << tab << "arrowhead = odiamond\n";
+        }
+    }
 }
 
 void dump_schedule_dag_to_dot_file(const schedule_dag& dag, const char *filename,
@@ -104,11 +133,11 @@ void dump_schedule_dag_to_dot_file(const schedule_dag& dag, const char *filename
 
         switch(dep.kind())
         {
-            case schedule_dep::data_dep:
-                if(0)
-                    oss << "data";
-                else
-                    oss << "r" << dep.reg();
+            case schedule_dep::virt_dep:
+                oss << "r" << dep.reg();
+                break;
+            case schedule_dep::phys_dep:
+                oss << "p" << dep.reg();
                 break;
             case schedule_dep::order_dep: oss << "order"; break;
             default: oss << "?"; break;
@@ -116,11 +145,8 @@ void dump_schedule_dag_to_dot_file(const schedule_dag& dag, const char *filename
 
         fout << tab << name_map[dep.from()] << " -> " << name_map[dep.to()] << "[\n";
         fout << tab << tab << "label = \"" << oss.str() << "\"\n";
-        if(dep.kind() == schedule_dep::order_dep)
-        {
-            fout << tab << tab << "color = blue\n";
-            fout << tab << tab << "style = dashed\n";
-        }
+        emit_dep_color_and_style(fout, tab, opts, dep);
+        
         fout << tab << "];\n";
     }
 

@@ -142,7 +142,7 @@ void build_schedule_dag_from_ddl_program(const ddl_program& p, schedule_dag& dag
                 schedule_dep(
                     /* from */ p.instrs[last_def[name]],
                     /* to */ unit,
-                    /* kind */ schedule_dep::data_dep,
+                    /* kind */ schedule_dep::virt_dep,
                     /* reg */ name_map[name]));
             /* update last use */
             last_use[name] = u;

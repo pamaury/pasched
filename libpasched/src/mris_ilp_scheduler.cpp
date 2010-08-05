@@ -109,7 +109,7 @@ void mris_ilp_scheduler::schedule(schedule_dag& dag, schedule_chain& sc) const
             {
                 const schedule_dep& dep = dag.get_succs(unit)[i];
                 // skip if not a data dep
-                if(dep.kind() != schedule_dep::data_dep)
+                if(!dep.is_data())
                     continue;
                 // check if register R is already mapped and map it if not
                 if(rc.reg_map.find(dep.reg()) == rc.reg_map.end())

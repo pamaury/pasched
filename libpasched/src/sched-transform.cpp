@@ -415,8 +415,8 @@ void unique_reg_ids::transform(schedule_dag& dag, const scheduler& s, schedule_c
         {
             schedule_dep dep = dag.get_succs(unit)[i];
             to_remove.push_back(dep);
-
-            if(dep.kind() == schedule_dep::data_dep)
+            /* Only match virtual registers */
+            if(dep.is_virt())
             {
                 if(reg_map.find(dep.reg()) == reg_map.end())
                     reg_map[dep.reg()] = dag.generate_unique_reg_id();
@@ -850,7 +850,8 @@ void split_def_use_dom_use_deps::transform(schedule_dag& dag, const scheduler& s
             std::map< schedule_dep::reg_t, std::vector< schedule_dep > > reg_succs;
 
             for(size_t i = 0; i < succs.size(); i++)
-                if(succs[i].kind() == schedule_dep::data_dep)
+                /* Only consider virtual deps, physical registers are too tricky */
+                if(succs[i].is_virt())
                     reg_succs[succs[i].reg()].push_back(succs[i]);
             
             /* Try each register R */
@@ -923,7 +924,7 @@ void split_def_use_dom_use_deps::transform(schedule_dag& dag, const scheduler& s
                      * didn't modify the link so the (U,D) edge is already in the list */
                     if(!dominator_is_in_reg_use)
                         reg_use.push_back(schedule_dep(unit, dom,
-                            schedule_dep::data_dep, cur_reg_it)); /* keep reg id here */
+                            schedule_dep::virt_dep, cur_reg_it)); /* keep reg id here */
 
                     dag.add_dependencies(reg_use);
 
@@ -1004,169 +1005,6 @@ void split_def_use_dom_use_deps::transform(schedule_dag& dag, const scheduler& s
 
     DEBUG_CHECK_END_X(c)
     debug() << "<--- split_def_use_dom_use_deps::transform\n";
-}
-
-/**
- * split_def_use_dom_use_partial
- */
-split_def_use_dom_use_partial::split_def_use_dom_use_partial(bool generate_new_reg_ids)
-    :m_generate_new_reg_ids(generate_new_reg_ids)
-{
-}
-
-split_def_use_dom_use_partial::~split_def_use_dom_use_partial()
-{
-}
-
-void split_def_use_dom_use_partial::transform(schedule_dag& dag, const scheduler& s, schedule_chain& c,
-    transformation_status& status) const
-{
-    debug() << "---> split_def_use_dom_use_partial::transform\n";
-    DEBUG_CHECK_BEGIN_X(dag, c)
-    
-    bool graph_changed = false;
-    /* Shortcuts */
-    const std::vector< const schedule_unit * >& units = dag.get_units();
-    size_t n = units.size();
-    /* Map a unit pointer to a number */
-    std::map< const schedule_unit *, size_t > name_map;
-    /* path[u][v] is true if there is a path from u to v */
-    std::vector< std::vector< bool > > path;
-    
-    status.begin_transformation();
-
-    /* First compute path map, it will not changed during the algorithm
-     * even though some edges are changed */
-    path.resize(n);
-    for(size_t u = 0; u < n; u++)
-    {
-        name_map[units[u]] = u;
-        path[u].resize(n);
-    }
-
-    /* Fill path */
-    for(size_t u = 0; u < n; u++)
-    {
-        std::set< const schedule_unit * > reach = dag.get_reachable(units[u],
-            schedule_dag::rf_follow_succs | schedule_dag::rf_include_unit);
-        std::set< const schedule_unit * >::iterator it = reach.begin();
-        for(; it != reach.end(); ++it)
-            path[u][name_map[*it]] = true;
-        /*
-        std::cout << "Reachable from " << units[u]->to_string() << "\n";
-        std::cout << "  " << reach << "\n";
-        */
-    }
-    
-    /* Each iteration might modify the graph */
-    while(true)
-    {
-        /* For each unit U */
-        for(size_t u = 0; u < dag.get_units().size(); u++)
-        {
-            const schedule_unit *unit = dag.get_units()[u];
-            const std::vector< schedule_dep >& succs = dag.get_succs(unit);
-            /* Skip useless units for speed reason */
-            if(succs.size() <= 1)
-                continue;
-            /* Compute the set of registers on successors dep */
-            std::map< schedule_dep::reg_t, std::vector< schedule_dep > > reg_succs;
-
-            for(size_t i = 0; i < succs.size(); i++)
-                if(succs[i].kind() == schedule_dep::data_dep)
-                    reg_succs[succs[i].reg()].push_back(succs[i]);
-
-            /* Try each register R */
-            std::map< schedule_dep::reg_t, std::vector< schedule_dep > >::iterator reg_succs_it = reg_succs.begin();
-            for(; reg_succs_it != reg_succs.end(); ++reg_succs_it)
-            {
-                std::vector< schedule_dep > reg_use = reg_succs_it->second;
-                /* For each use V */
-                for(size_t v = 0; v < reg_use.size(); v++)
-                {
-                    const schedule_unit *user = reg_use[v].to();
-                    /* For each successor D of U */
-                    for(size_t j = 0; j < succs.size(); j++)
-                    {
-                        const schedule_unit *dom = succs[j].to();
-                        /* D must be different from V */
-                        if(dom == user)
-                            continue;
-                        /* V must be reachable from D */
-                        if(!path[name_map[dom]][name_map[user]])
-                            continue;
-                        /* For each other successor OS of U */
-                        for(size_t k = 0; k < succs.size(); k++)
-                        {
-                            const schedule_unit *other_succ = succs[k].to();
-                            if(other_succ == dom)
-                                continue;
-                            /* either V is not reachable from OV or OV is reachable from D */
-                            if(path[name_map[other_succ]][name_map[user]] &&
-                                    !path[name_map[dom]][name_map[other_succ]])
-                                goto Lskip_dom;
-                        }
-                        /* Perfect ! */
-                        /* Now we split the edge */
-                        {
-                            /*
-                            std::vector< dag_printer_opt > opts;
-                            dag_printer_opt o;
-                            o.type = dag_printer_opt::po_color_node;
-                            o.color_node.color = "red";
-                            o.color_node.unit = unit;
-                            opts.push_back(o);
-                            o.color_node.color = "blue";
-                            o.color_node.unit = user;
-                            opts.push_back(o);
-                            o.color_node.color = "green";
-                            o.color_node.unit = dom;
-                            opts.push_back(o);
-                            debug_view_dag(dag, opts);
-                            */
-                            
-                            schedule_dep new_dep = reg_use[v];
-                            new_dep.set_to(dom);
-                            schedule_dep other_dep = reg_use[v];
-                            other_dep.set_from(dom);
-                            if(m_generate_new_reg_ids)
-                                other_dep.set_reg(dag.generate_unique_reg_id());
-
-                            dag.remove_dependency(reg_use[v]);
-                            dag.add_dependency(new_dep);
-                            dag.add_dependency(other_dep);
-                            dag.remove_redundant_data_dep_preds(dom);
-
-                            //debug_view_dag(dag, opts);
-                            
-                            goto Lgraph_changed;
-                        }
-
-                        Lskip_dom:
-                        continue;
-                    }
-                }
-            }
-        }
-
-        /* Graph did not change */
-        break;
-
-        Lgraph_changed:
-        graph_changed = true;
-        continue;
-    }
-
-    status.set_modified_graph(graph_changed);
-    status.set_deadlock(false);
-    status.set_junction(false);
-
-    s.schedule(dag, c);
-
-    status.end_transformation();
-
-    DEBUG_CHECK_END_X(c)
-    debug() << "<--- split_def_use_dom_use_partial::transform\n";
 }
 
 /**

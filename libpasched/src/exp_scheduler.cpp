@@ -270,7 +270,7 @@ namespace
                 for(size_t j = 0; j < dag.get_succs(unit).size(); j++)
                 {
                     const schedule_dep& dep = dag.get_succs(unit)[j];
-                    if(dep.kind() == schedule_dep::data_dep && dep.reg() == st.unit_sinfo[u].reg_create[i])
+                    if(dep.is_data() && dep.reg() == st.unit_sinfo[u].reg_create[i])
                         st.unit_sinfo[u].reg_create_use_count[i]++;
                 }
             /* irp */
@@ -628,22 +628,39 @@ void exp_scheduler::schedule(schedule_dag& dag, schedule_chain& sc) const
     if(st.status == status_success ||
             (st.status == status_timeout && st.has_schedule))
     {
+        generic_schedule_chain gsc;
         assert(st.has_schedule && "Success but not valid schedule ?!");
         assert(st.best_schedule.size() == st.nb_units && "Schedule has the wrong size !");
         for(size_t i = 0; i < st.best_schedule.size(); i++)
-            sc.append_unit(dag.get_units()[st.best_schedule[i]]);
+            gsc.append_unit(dag.get_units()[st.best_schedule[i]]);
             
         #ifdef ENABLE_SCHED_AUTO_CHECK_RP
-        {
-            generic_schedule_chain gsc;
-            for(size_t i = 0; i < st.best_schedule.size(); i++)
-                gsc.append_unit(dag.get_units()[st.best_schedule[i]]);
-
-            assert(st.best_rp == gsc.compute_rp_against_dag(dag) && "Mismatch between announced and actual RP in exp_scheduler");
-        }
+        assert(st.best_rp == gsc.compute_rp_against_dag(dag) && "Mismatch between announced and actual RP in exp_scheduler");
         #endif
 
         STM_STOP(exp_scheduler)
+
+        if(st.status == status_timeout)
+        {
+            /* Okay, with have a schedule but because of the timeout, it might be of a bad quality,
+            * so try to run the fallback scheduler and compare results */
+            generic_schedule_chain alt_gsc;
+            m_fallback_sched->schedule(dag, alt_gsc);
+
+            size_t exp_rp = gsc.compute_rp_against_dag(dag);
+            size_t alt_rp = alt_gsc.compute_rp_against_dag(dag);
+
+            if(alt_rp < exp_rp)
+            {
+                gsc.clear();
+                gsc.insert_units_at(0, alt_gsc.get_units());
+                std::cout << "Fallback schedule is better: " << alt_rp << " vs " << exp_rp << "\n";
+            }
+            else
+                std::cout << "Exp (timeout) schedule is better: " << exp_rp << " vs " << alt_rp << "\n";
+        }
+        
+        sc.insert_units_at(sc.get_unit_count(), gsc.get_units());
     }
     else
     {

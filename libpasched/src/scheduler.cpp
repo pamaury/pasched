@@ -183,7 +183,7 @@ void simple_rp_scheduler::schedule(pasched::schedule_dag& dag, pasched::schedule
         for(size_t i = 0; i < dag.get_succs(unit).size(); i++)
         {
             const schedule_dep& dep = dag.get_succs(unit)[i];
-            if(dep.kind() != schedule_dep::data_dep)
+            if(!dep.is_data())
                 continue;
             if(live_regs.find(dep.reg()) == live_regs.end())
             {
