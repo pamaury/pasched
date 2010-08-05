@@ -140,262 +140,180 @@ class dag_accumulator : public pasched::transformation
     bool m_deep;
 };
 
-const pasched::transformation *simplify_order_cuts()
+class handle_physical_regs : public pasched::transformation
 {
-    return new pasched::simplify_order_cuts;
-}
+    public:
+    handle_physical_regs() {}
+    virtual ~handle_physical_regs() {}
 
-/**
- * If the graph consist of two subgraphs G and H with one articulation node x
- * such that each node in G has a directed path to x and each node y in H
- * has a directed path from x, then we can safely schedule G then H because
- * any schedule node in H reauires x to be schedule which thus require that
- * G be scheduled a whole. So we split x and the graph into two subgraphs
- */
-void split_merge_branch_units_conservative(pasched::schedule_dag& dag)
-{
-    sched_unit_vec_t to_split;
-
-    for(size_t u = 0; u < dag.get_units().size(); u++)
+    virtual void transform(pasched::schedule_dag& dag, const pasched::scheduler& s, pasched::schedule_chain& c,
+        pasched::transformation_status& status) const
     {
-        if(dag.get_preds(dag.get_units()[u]).size() == 0 ||
-                dag.get_succs(dag.get_units()[u]).size() == 0)
-            continue;
+        typedef std::vector< std::pair< const pasched::schedule_unit *, const pasched::schedule_unit * > > reg_problem_list;
+        typedef std::map< pasched::schedule_dep::reg_t, reg_problem_list > reg_problem_map;
+        bool modified = false;
+        reg_problem_map problems;
+
+        /**
+         * This transformation is organized as follow:
+         * 1) build a map of physical registers creators
+         * 2) skip work if no register has no more than one creator
+         * 3) build an interferance map of creators and use a path map of the graph
+         *    to reduce it
+         * 4) skip work if there is no actual problem
+         * 5) for each problem, check if there is a natural partial order between creators
+         *    then can be strengthened to solve it and do it
+         * 6) skip any further work if the problem list if empty
+         * 7) ...
+         *
+         * Note that the checks are more expensive each time because there are actually only
+         * a few relevant cases so we try to minimize the work in most cases */
         
-        sched_unit_set_t pr = dag.get_reachable(dag.get_units()[u], sched_dag_t::rf_follow_preds);
-        sched_unit_set_t sr = dag.get_reachable(dag.get_units()[u], sched_dag_t::rf_follow_succs);
+        status.begin_transformation();
 
-        if((sr.size() + pr.size() + 1) != dag.get_units().size())
-            continue;
-
-        sched_unit_set_t::iterator it = pr.begin();
-
-        for(; it != pr.end(); ++it)
-        {
-            for(size_t i = 0; i < dag.get_succs(*it).size(); i++)
-                if(sr.find(dag.get_succs(*it)[i].to()) != sr.end())
-                    goto Lskip;
-        }
-
-        it = sr.begin();
-        for(; it != sr.end(); ++it)
-        {
-            for(size_t i = 0; i < dag.get_preds(*it).size(); i++)
-                if(pr.find(dag.get_preds(*it)[i].from()) != pr.end())
-                    goto Lskip;
-        }
-
-        //std::cout << "found split node: " << dag.get_units()[u]->to_string() << "\n";
-        //std::cout << "pr: " << pr << "\n";
-        //std::cout << "sr: " << sr << "\n";
-
-        to_split.push_back(dag.get_units()[u]);
-
-        Lskip:
-        continue;
-    }
-
-    for(size_t u = 0; u < to_split.size(); u++)
-    {
-        sched_unit_ptr_t unit = to_split[u];
-        // make a copy of the unit
-        sched_unit_ptr_t cpy = unit->dup();
-        // add the unit
-        dag.add_unit(cpy);
-        // copy succs dependencies to the unit copy
-        for(size_t i = 0; i < dag.get_succs(unit).size(); i++)
-        {
-            sched_dep_t d = dag.get_succs(unit)[i];
-            d.set_from(cpy);
-            dag.add_dependency(d);
-        }
-        // remove those dependencies from the original unit
-        while(dag.get_succs(unit).size() != 0)
-            dag.remove_dependency(dag.get_succs(unit)[0]);
-    }
-}
-
-/**
- * If there is a node U such that all children for the same dependency
- * are U(1) ... U(k) satisfy the property that all U(i) are reachable
- * from, say, U(1), then we can cut all (U,U(i)) dep for i>=1
- * and add (U(1),U(i)) instead
- */
-const pasched::transformation *split_def_use_dom_use_deps()
-{
-    return new pasched::split_def_use_dom_use_deps;
-}
-
-/**
- * Run the alternative MRIS ILP scheduler on the graph and adds the order links
- * in order to force a chain order.
- */
-void mris_ilp_schedule(pasched::schedule_dag& dag)
-{
-    pasched::mris_ilp_scheduler mris;
-    pasched::generic_schedule_chain sc;
-
-    mris.schedule(dag, sc);
-
-    //std::cout << "-==== Schedule ====-\n";
-    /*
-    for(size_t i = 0; i < sc.get_units().size(); i++)
-        std::cout << "(" << std::setw(2) << i << ") " << sc.get_units()[i]->to_string() << "\n";
-    */
-    /* add order edges to force chain order in the original graph */
-    for(size_t i = 0; (i + 1) < sc.get_units().size(); i++)
-    {
-        sched_dep_t d;
-        d.set_from(sc.get_units()[i]);
-        d.set_to(sc.get_units()[i + 1]);
-        d.set_kind(sched_dep_t::order_dep);
-        dag.add_dependency(d);
-    }
-}
-
-const pasched::transformation *unique_reg_ids()
-{
-    return new pasched::unique_reg_ids;
-}
-
-const pasched::transformation *strip_useless_order_deps()
-{
-    return new pasched::strip_useless_order_deps;
-}
-
-const pasched::transformation *smart_fuse_two_units(bool aggressive)
-{
-    return new pasched::smart_fuse_two_units(aggressive, false);
-}
-
-const pasched::transformation *smart_fuse_two_units_conservative()
-{
-    return smart_fuse_two_units(false);
-}
-
-const pasched::transformation *smart_fuse_two_units_aggressive()
-{
-    return smart_fuse_two_units(true);
-}
-
-/**
- * 
- */
-void strip_nrinro_costless_units(pasched::schedule_dag& dag)
-{
-    /* We repeat everything from the beginning at each step because
-     * each modification can add order dependencies and delete a node,
-     * so it's easier this way */
-    while(true)
-    {
-        /* Find such a node */
-        size_t u;
-        sched_unit_ptr_t unit = 0;
-        for(u = 0; u < dag.get_units().size(); u++)
-        {
-            unit = dag.get_units()[u];
-            /* - costless */
-            if(unit->internal_register_pressure() != 0)
-                goto Lskip;
-            /* - NRI */
-            for(size_t i = 0; i < dag.get_preds(unit).size(); i++)
-                if(dag.get_preds(unit)[i].kind() != sched_dep_t::order_dep)
-                    goto Lskip;
-
-            /* - NRO */
-            for(size_t i = 0; i < dag.get_succs(unit).size(); i++)
-                if(dag.get_succs(unit)[i].kind() != sched_dep_t::order_dep)
-                    goto Lskip;
-            break;
-            Lskip:
-            continue;
-        }
-
-        /* Stop if not found */
-        if(u == dag.get_units().size())
-            break;
-        /* We will remove the unit but add some dependencies to keep correctness
-         * We add the dependencies at the end because it can invalidate
-         * the lists we are going through */
-        sched_dep_vec_t to_add;
-        
-        for(size_t i = 0; i < dag.get_preds(unit).size(); i++)
-            for(size_t j = 0; j < dag.get_succs(unit).size(); j++)
+        /* build a map of physical registers creators */
+        std::map< pasched::schedule_dep::reg_t, std::set< const pasched::schedule_unit * > > physical_reg_creators;
+        std::vector< pasched::schedule_dep::reg_t > several_creators;
+        for(size_t i = 0; i < dag.get_deps().size(); i++)
+            if(dag.get_deps()[i].kind() == pasched::schedule_dep::data_dep && dag.get_deps()[i].reg() != 0)
             {
-                sched_dep_t d;
-                d.set_from(dag.get_preds(unit)[i].from());
-                d.set_to(dag.get_succs(unit)[j].to());
-                d.set_kind(sched_dep_t::order_dep);
-
-                to_add.push_back(d);
+                physical_reg_creators[dag.get_deps()[i].reg()].insert(dag.get_deps()[i].from());
+                if(physical_reg_creators[dag.get_deps()[i].reg()].size() == 2)
+                    several_creators.push_back(dag.get_deps()[i].reg());
             }
+        
+        /* Physical registers are *very* special, treat them differently */
+        if(several_creators.size() == 0)
+            goto Lno_work;
 
-        /* Add the dependencies */
-        dag.add_dependencies(to_add);
-
-        /* Remove the unit */
-        dag.remove_unit(unit);
-    }
-}
-
-void strip_redundant_data_deps(pasched::schedule_dag& dag)
-{
-    sched_dep_vec_t to_remove;
-    
-    for(size_t u = 0; u < dag.get_units().size(); u++)
-    {
-        sched_unit_ptr_t unit = dag.get_units()[u];
-        for(size_t i = 0; i < dag.get_succs(unit).size(); i++)
+        /*
+        for(size_t i = 0; i < several_creators.size(); i++)
         {
-            const sched_dep_t& dep = dag.get_succs(unit)[i];
-            if(dep.kind() != sched_dep_t::data_dep)
-                continue;
-            for(size_t j = i + 1; j < dag.get_succs(unit).size(); j++)
+            pasched::schedule_dep::reg_t reg = several_creators[i];
+            std::cout << "Register " << reg << " has the following creators:\n";
+            std::set< const pasched::schedule_unit * >::iterator it;
+            for(it = physical_reg_creators[reg].begin(); it != physical_reg_creators[reg].end(); ++it)
+                std::cout << "  " << (*it)->to_string() << "\n";
+        }
+        */
+
+        /* We are here because at least one physical register used twice or more.
+         * Hopefully, in a number of cases, this is a false positive because the
+         * natural ordering will prevent them from interfering.
+         * Check this for each register */
+        {
+            for(size_t i = 0; i < several_creators.size(); i++)
             {
-                const sched_dep_t& dep2 = dag.get_succs(unit)[j];
-                if(dep2.kind() == sched_dep_t::data_dep &&
-                        dep2.to() == dep.to() &&
-                        dep2.reg() == dep2.reg())
-                    to_remove.push_back(dep2);
+                pasched::schedule_dep::reg_t reg = several_creators[i];
+                std::vector< const pasched::schedule_unit * > creators = pasched::set_to_vector(physical_reg_creators[reg]);
+                /* create path map */
+                std::vector< std::vector< bool > > path;
+                std::map< const pasched::schedule_unit *, size_t> name_map;
+
+                dag.build_path_map(path, name_map);
+                /* Create interferance map */
+                std::vector< std::vector< bool > > interfere;
+                interfere.resize(creators.size());
+                for(size_t i = 0; i < interfere.size(); i++)
+                {
+                    interfere[i].resize(creators.size(), true); /* interfere unless proven the contrary */
+                    interfere[i][i] = false;
+                }
+
+                /* this list does not consider symmetry because if C must happen before D
+                 * then obviously D happens before C so in one case, we can't conclude that
+                 * they don't interfere ! */
+                for(size_t i = 0; i < creators.size(); i++)
+                {
+                    /* consider a creator C */
+                    const pasched::schedule_unit *creator = creators[i];
+                    /* consider every other creator D */
+                    for(size_t j = 0; j < creators.size(); j++)
+                    {
+                        if(i == j)
+                            continue;
+                        const pasched::schedule_unit *other = creators[j];
+                        /* now to prove that C does not intefere with D, we must ensure that
+                         * any use of the physical register created by C has a path to D
+                         * So consider every succ S of C with physical reg dep */
+                        for(size_t k = 0; k < dag.get_succs(other).size(); k++)
+                        {
+                            const pasched::schedule_dep& dep = dag.get_succs(other)[k];
+                            if(dep.kind() != pasched::schedule_dep::data_dep || dep.reg() != reg)
+                                continue;
+                            const pasched::schedule_unit *use = dep.to();
+                            /* if there is no path from S to D, then they might interfere */
+                            if(!path[name_map[creator]][name_map[use]])
+                                goto Linterfere;
+                        }
+                        /* we proved they do not interfere */
+                        interfere[i][j] = false;
+                        interfere[j][i] = false;
+
+                        Linterfere:
+                        continue;
+                    }
+                }
+
+                /* Make a summary of interferance pairs */
+                reg_problem_list problem_list;
+                /* the map must be symmetrical at this point */
+                for(size_t i = 0; i < creators.size(); i++)
+                    for(size_t j = i + 1; j < creators.size(); j++)
+                        if(interfere[i][j])
+                            problem_list.push_back(std::make_pair(creators[i], creators[j]));
+
+                if(problem_list.size() != 0)
+                    problems[reg] = problem_list;
             }
         }
+        /* still problems ? */
+        if(problems.size() == 0)
+            goto Lno_work;
+        std::cout << "Problem list:\n";
+        for(reg_problem_map::iterator it = problems.begin(); it != problems.end(); ++it)
+        {
+            std::cout << "  Register " << it->first << "\n";
+            reg_problem_list& l = it->second;
+            for(size_t i = 0; i < l.size(); i++)
+            {
+                std::cout << "    Pair:\n";
+                std::cout << "      " << l[i].first->to_string() << "\n";
+                std::cout << "      " << l[i].second->to_string() << "\n";
+            }
+        }
+        
+        {
+            std::vector< pasched::dag_printer_opt > opts;
+            for(size_t i = 0; i < dag.get_deps().size(); i++)
+                if(dag.get_deps()[i].reg() != 0)
+                {
+                    pasched::dag_printer_opt o;
+                    o.type = pasched::dag_printer_opt::po_color_dep;
+                    o.color_dep.dep = dag.get_deps()[i];
+                    o.color_dep.color = "red";
+                    opts.push_back(o);
+                }
+            debug_view_dag(dag, opts);
+        }
+
+        Lno_work:
+        status.set_modified_graph(modified);
+        status.set_junction(false);
+        status.set_deadlock(false);
+
+        /* forward */
+        s.schedule(dag, c);
+
+        status.end_transformation();
     }
-
-    dag.remove_dependencies(to_remove);
-}
-
-const pasched::transformation *break_symmetrical_branch_merge()
-{
-    return new pasched::break_symmetrical_branch_merge;
-}
-
-void reg_analysis_info(pasched::schedule_dag& dag)
-{
-    std::cout << "--== Reg analysis ==--\n";
-    for(size_t u = 0; u < dag.get_units().size(); u++)
-    {
-        sched_unit_ptr_t unit = dag.get_units()[u];
-        std::cout << "  Unit: " << unit << "\n";
-        sched_reg_set_t vc = dag.get_reg_create(unit);
-        sched_reg_set_t vu = dag.get_reg_use(unit);
-        sched_reg_set_t vd = dag.get_reg_destroy(unit);
-        sched_reg_set_t vde = dag.get_reg_destroy_exact(unit);
-        sched_reg_set_t vdde = dag.get_reg_dont_destroy_exact(unit);
-
-        std::cout << "    VC  =" << vc << "\n";
-        std::cout << "    VU  =" << vu << "\n";
-        std::cout << "    VD  =" << vd << "\n";
-        std::cout << "    VDE =" << vde << "\n";
-        std::cout << "    VDDE=" << vdde << "\n";
-    }
-}
+};
 
 /**
  * Few tables for passes registration and blabla
  */
 typedef void (*read_cb_t)(const char *filename, pasched::schedule_dag& dag);
 typedef void (*write_cb_t)(pasched::schedule_dag& dag, const char *filename);
-typedef const pasched::transformation * (*pass_factory_t)();
 
 struct format_t
 {
@@ -404,13 +322,6 @@ struct format_t
     const char *desc;
     read_cb_t read;
     write_cb_t write;
-};
-
-struct pass_t
-{
-    const char *name;
-    const char *desc;
-    pass_factory_t factory;
 };
 
 const char *ddl_ext[] = {"ddl", 0};
@@ -428,28 +339,12 @@ format_t formats[] =
     {0, 0, 0, 0, 0}
 };
 
-pass_t passes[] =
-{
-    {"unique-reg-ids", "Number data dependencies to have unique register IDs", &unique_reg_ids},
-    //{"strip-nrinro-costless-units", "Strip no-register-in no-register-out costless units", &strip_nrinro_costless_units},
-    {"strip-useless-order-deps", "Strip order dependencies already enforced by order depedencies", &strip_useless_order_deps},
-    {"simplify-order-cuts", "Simplify the graph by finding one way cuts made of order dependencies", &simplify_order_cuts},
-    //{"mris-ilp-schedule", "Schedule it with the MRIS ILP scheduler", &mris_ilp_schedule},
-    {"split-def-use-dom-use-deps", "Split edges from a def to a use which dominates all other uses", &split_def_use_dom_use_deps},
-    //{"strip-redundant-data-deps", "", &strip_redundant_data_deps},
-    {"smart-fuse-two-units-conservative", "", &smart_fuse_two_units_conservative},
-    {"smart-fuse-two-units-aggressive", "", &smart_fuse_two_units_aggressive},
-    {"break-symmetrical-branch-merge", "", &break_symmetrical_branch_merge},
-    //{"reg-analysis-info", "", &reg_analysis_info},
-    {0, 0, 0}
-};
-
 /**
  * Helper function to display help
  */
 void display_usage()
 {
-    std::cout << "usage: driver <fmt> <input> <fmt> <output> [<pass 1> <pass 2> ...]\n";
+    std::cout << "usage: driver <fmt> <input> <fmt> <output>\n";
     std::cout << "Formats:\n";
     size_t max_size = 0;
     for(int i = 0; formats[i].name != 0; i++)
@@ -463,15 +358,6 @@ void display_usage()
         if(formats[i].write == 0)
             std::cout << "(Input only)";
         std::cout << "\n";
-    }
-    std::cout << "Passes:\n";
-
-    max_size = 0;
-    for(int i = 0; passes[i].name != 0; i++)
-        max_size = std::max(max_size, strlen(passes[i].name));
-    for(int i = 0; passes[i].name != 0; i++)
-    {
-        std::cout << " -" << std::setw(max_size) << std::left << passes[i].name << "\t" << passes[i].desc << "\n";
     }
 }
 
@@ -538,38 +424,7 @@ int __main(int argc, char **argv)
     }
     TM_STOP(dtm_read)
 
-    #if 0
-    
-    pasched::transformation_pipeline pipeline;
-    /* build pipeline */
-    for(int i = 5; i < argc; i++)
-    {
-        int j = 0;
-        while(passes[j].name && strcmp(passes[j].name, argv[i] + 1) != 0)
-            j++;
-
-        if(passes[j].name == 0 || argv[i][0] != '-')
-        {
-            std::cout << "Unknown pass '" << argv[i] << "'\n";
-            return 1;
-        }
-
-        pipeline.add_stage(passes[j].factory());
-    }
-
-    /* add accumulator */
-    dag_accumulator accumulator;
-    pipeline.add_stage(&accumulator);
-
-    /* run pipeline with stupid scheduler */
-    pasched::basic_list_scheduler sched;
-    pasched::generic_schedule_chain chain;
-    pasched::basic_status status;
-    pipeline.transform(dag, sched, chain, status);
-    
-    #endif
-
-    #if 1
+    debug_view_dag(dag);
 
     pasched::transformation_pipeline pipeline;
     pasched::transformation_pipeline snd_stage_pipe;
@@ -578,6 +433,7 @@ int __main(int argc, char **argv)
      * the chain and in the DAG ! */
     dag_accumulator after_unique_accum(false);
     dag_accumulator accumulator;
+    pipeline.add_stage(new handle_physical_regs);
     pipeline.add_stage(new pasched::unique_reg_ids);
     pipeline.add_stage(&after_unique_accum);
     pipeline.add_stage(&loop);
@@ -618,7 +474,6 @@ int __main(int argc, char **argv)
     delete dag_copy;
     //debug_view_dag(after_unique_accum.get_dag());
     //debug_view_chain(chain);
-    #endif
 
     /*
     std::cout << "Status: Mod=" << status.has_modified_graph() << " Junction=" << status.is_junction()
@@ -632,7 +487,7 @@ int __main(int argc, char **argv)
 
     TM_STOP(dtm_total)
 
-    #if 1
+    #if 0
     if(pasched::time_stat::get_time_stat_count() != 0)
     {
         std::cout << "Time statistics:\n";
