@@ -358,6 +358,37 @@ class strip_dataless_units : public transformation
         transformation_status& status) const;
 };
 
+/**
+ * Handle physical registers in several ways:
+ * - promote physical reg to virtual reg when the behaviour is is the same (if requested)
+ * - enforce order of physical reg when a partial order is already present, via and order dep and then promote (if requested)
+ * In all cases, if there is nothing to do, physical register will stay there. If applied with promotion,
+ * the remaining graph can have any schedule order for each pair of physical register with the same ID so either
+ * the remaining transformation handle them or an arbitrary order can be chosen */
+class handle_physical_regs : public pasched::transformation
+{
+    public:
+    /**
+     * promote_phys_to_virt means that when a physical register is proved to have
+     * the same semantics has a virtual one (that is when it can't overlap another
+     * physical register with the same ID) then it is promoted to a virtual register.
+     * This is useful because some code might not handle physical regs so it would be
+     * stupid to skip optmizations is cases where it doesn't change anything */
+    handle_physical_regs(bool promote_phys_to_virt = true);
+    virtual ~handle_physical_regs();
+
+    virtual void transform(pasched::schedule_dag& dag, const pasched::scheduler& s, pasched::schedule_chain& c,
+        pasched::transformation_status& status) const;
+    protected:
+    void promote_phys_register(
+        pasched::schedule_dag& dag,
+        const pasched::schedule_unit *unit,
+        pasched::schedule_dep::reg_t reg,
+        bool& modified) const;
+    
+    bool m_promote;
+};
+
 }
 
 #endif /* __PAMAURY_SCHED_XFORM_HPP__ */
