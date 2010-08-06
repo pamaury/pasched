@@ -280,7 +280,7 @@ int __main(int argc, char **argv)
     #if 0
     pasched::simple_rp_scheduler basic_sched;
     pasched::mris_ilp_scheduler sched(&basic_sched, 1000, true);
-    #elif 1
+    #elif 0
     pasched::simple_rp_scheduler basic_sched;
     pasched::exp_scheduler sched(&basic_sched, 0000, false);
     #else

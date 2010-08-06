@@ -1839,7 +1839,6 @@ void handle_physical_regs::transform(schedule_dag& dag, const scheduler& s, sche
             debug() << "      " << l[i].second->to_string() << "\n";
         }
     }
-    debug_view_dag(dag);
     
     goto Lcont;
 
