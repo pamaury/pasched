@@ -1,5 +1,6 @@
 #include <scheduler.hpp>
-#include "tools.hpp"
+#include <tools.hpp>
+#include <sched-dag-viewer.hpp>
 #include <climits>
 #include <queue>
 #include <map>
@@ -77,7 +78,7 @@ simple_rp_scheduler::~simple_rp_scheduler()
 {
 }
 
-void simple_rp_scheduler::schedule(pasched::schedule_dag& dag, pasched::schedule_chain& c) const
+void simple_rp_scheduler::schedule(schedule_dag& dag, schedule_chain& c) const
 {
     debug() << "---> simple_rp_scheduler::schedule\n";
     STM_START(simple_rp_scheduler)
@@ -86,6 +87,7 @@ void simple_rp_scheduler::schedule(pasched::schedule_dag& dag, pasched::schedule
     std::map< schedule_dep::reg_t, srp_live_reg > live_regs;
     std::vector< const schedule_unit * > schedulable;
     size_t max_rp = 0;
+    generic_schedule_chain gsc;
 
     /* fill info */
     for(size_t u = 0; u < dag.get_units().size(); u++)
@@ -154,6 +156,33 @@ void simple_rp_scheduler::schedule(pasched::schedule_dag& dag, pasched::schedule
                 best_idx = i;
             }
         }
+        if(best_score == INT_MAX)
+        {
+            std::vector< dag_printer_opt > opts;
+            schedule_dag *cpy = dag.dup();
+            for(size_t i = 0; i < gsc.get_unit_count(); i++)
+            {
+                dag_printer_opt o;
+                o.type = dag_printer_opt::po_color_node;
+                o.color_node.color = "magenta";
+                o.color_node.unit = gsc.get_unit_at(i);
+                opts.push_back(o);
+                if((i + 1) == gsc.get_unit_count())
+                    continue;
+                schedule_dep dep(
+                    gsc.get_unit_at(i),
+                    gsc.get_unit_at(i + 1),
+                    schedule_dep::order_dep);
+                cpy->add_dependency(dep);
+                o.type = dag_printer_opt::po_color_dep;
+                o.color_dep.color = "green";
+                o.color_dep.dep = dep;
+                o.color_dep.match_all = false;
+                opts.push_back(o);
+            }
+            debug_view_dag(*cpy, opts);
+            delete cpy;
+        }
         assert(best_score != INT_MAX && "no schedulable unit ?");
         /* Schedule it ! */
         
@@ -163,7 +192,7 @@ void simple_rp_scheduler::schedule(pasched::schedule_dag& dag, pasched::schedule
 
         debug() << "  * schedule " << unit->to_string() << "\n";
 
-        c.append_unit(unit);
+        gsc.append_unit(unit);
 
         /* update children */
         std::set< const schedule_unit * > next = dag.get_reachable(unit,
@@ -225,6 +254,9 @@ void simple_rp_scheduler::schedule(pasched::schedule_dag& dag, pasched::schedule
         /* update RP */
         max_rp = std::max(max_rp, live_regs.size());
     }
+
+    assert(gsc.check_against_dag(dag) && "invalid schedule");
+    c.insert_units_at(c.get_unit_count(), gsc.get_units());
 
     STM_STOP(simple_rp_scheduler)
     debug() << "<--- simple_rp_scheduler::schedule\n";

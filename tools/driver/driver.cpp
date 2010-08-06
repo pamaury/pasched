@@ -263,17 +263,14 @@ int __main(int argc, char **argv)
     dag_accumulator after_unique_accum(false);
     dag_accumulator accumulator;
     pipeline.add_stage(new pasched::unique_reg_ids);
-    /* do a pre-stage removal of useless order deps because the handling of physical
-     * registers will be much faster when there are less edges */
-    pipeline.add_stage(new pasched::strip_useless_order_deps);
     pipeline.add_stage(&after_unique_accum);
-    pipeline.add_stage(new pasched::handle_physical_regs);
     pipeline.add_stage(&loop);
     pipeline.add_stage(&accumulator);
     
     snd_stage_pipe.add_stage(new pasched::strip_dataless_units);
     snd_stage_pipe.add_stage(new pasched::strip_useless_order_deps);
     snd_stage_pipe.add_stage(new pasched::simplify_order_cuts);
+    snd_stage_pipe.add_stage(new pasched::handle_physical_regs);
     snd_stage_pipe.add_stage(new pasched::split_def_use_dom_use_deps);
     snd_stage_pipe.add_stage(new pasched::smart_fuse_two_units(false, true));
     snd_stage_pipe.add_stage(new pasched::break_symmetrical_branch_merge);
@@ -304,9 +301,9 @@ int __main(int argc, char **argv)
      * reg renaming */
     std::cout << "RP=" << chain.compute_rp_against_dag(after_unique_accum.get_dag()) << "\n";
     delete dag_copy;
-    debug_view_dag(accumulator.get_dag());
+    //debug_view_dag(accumulator.get_dag());
     //debug_view_chain(chain);
-    debug_view_scheduled_dag(after_unique_accum.get_dag(), chain);
+    //debug_view_scheduled_dag(after_unique_accum.get_dag(), chain);
 
     /*
     std::cout << "Status: Mod=" << status.has_modified_graph() << " Junction=" << status.is_junction()

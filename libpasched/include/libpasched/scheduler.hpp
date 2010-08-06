@@ -38,7 +38,10 @@ class rand_scheduler : public pasched::scheduler
 };
 
 /**
- * Simple list scheduler that tries to do reduce the register pressure
+ * Simple list scheduler that tries to do reduce the register pressure.
+ * This schedule expect partial orders between interfering physical registers to
+ * be resolve (with handle_phys_regs pass for example) and will not backtrack if
+ * it encounters an invalid situation
  */
 class simple_rp_scheduler : public pasched::scheduler
 {
