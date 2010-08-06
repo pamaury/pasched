@@ -52,4 +52,33 @@ void debug_view_chain(const schedule_chain& c)
     debug_view_chain(c, std::vector< dag_printer_opt >());
 }
 
+void debug_view_scheduled_dag(const schedule_dag& _dag, const schedule_chain& chain, const std::vector< dag_printer_opt >& _opts)
+{
+    schedule_dag *dag = _dag.dup();
+    std::vector< dag_printer_opt > opts(_opts);
+    /* just print the dag augmented with edges to force scheduled order, with a different color */
+    for(size_t i = 0; (i + 1) < chain.get_unit_count(); i++)
+    {
+        schedule_dep dep = schedule_dep(
+            chain.get_unit_at(i),
+            chain.get_unit_at(i + 1),
+            schedule_dep::order_dep);
+        dag->add_dependency(dep);
+        dag_printer_opt o;
+        o.type = dag_printer_opt::po_color_dep;
+        o.color_dep.dep = dep;
+        o.color_dep.color = "green";
+        o.color_dep.style = "bold";
+        o.color_dep.match_all = false;
+        opts.push_back(o);
+    }
+    debug_view_dag(*dag, opts);
+    delete dag;
+}
+
+void debug_view_scheduled_dag(const schedule_dag& dag, const schedule_chain& chain)
+{
+    debug_view_scheduled_dag(dag, chain, std::vector< dag_printer_opt >());
+}
+
 }

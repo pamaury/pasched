@@ -62,17 +62,35 @@ namespace
     }
 
     void emit_dep_color_and_style(std::ofstream& fout, const std::string& tab,
-        const std::vector< dag_printer_opt >& opts, const schedule_dep& dep)
+        const std::vector< dag_printer_opt >& opts, const schedule_dep& dep,
+        std::set< schedule_dep >& already_matched)
     {
         bool has_color = false;
+        bool has_style = false;
         for(size_t i = 0; i < opts.size(); i++)
         {
             if(opts[i].type != dag_printer_opt::po_color_dep)
                 continue;
             if(opts[i].color_dep.dep != dep)
                 continue;
-            fout << tab << tab << "color = \"" << opts[i].color_dep.color << "\"\n";
-            has_color = true;
+            /* don't consider if it already matched a dep and is requested to match only one */
+            if(!opts[i].color_dep.match_all &&
+                    already_matched.find(dep) != already_matched.end())
+                continue;
+            /* add to matched list */
+            if(!opts[i].color_dep.match_all)
+                already_matched.insert(dep);
+            /* handle color and style */
+            if(opts[i].color_dep.color.size() > 0)
+            {
+                fout << tab << tab << "color = \"" << opts[i].color_dep.color << "\"\n";
+                has_color = true;
+            }
+            if(opts[i].color_dep.style.size() > 0)
+            {
+                fout << tab << tab << "style = \"" << opts[i].color_dep.style << "\"\n";
+                has_style = true;
+            }
             break;
         }
 
@@ -80,7 +98,8 @@ namespace
         {
             if(!has_color)
                 fout << tab << tab << "color = blue\n";
-            fout << tab << tab << "style = dashed\n";
+            if(!has_style)
+                fout << tab << tab << "style = dashed\n";
         }
         else if(dep.kind() == schedule_dep::phys_dep)
         {
@@ -103,6 +122,8 @@ void dump_schedule_dag_to_dot_file(const schedule_dag& dag, const char *filename
 
     /* enumerate nodes */
     std::map< const schedule_unit *, std::string > name_map;
+    /* matched list for dependencies */
+    std::set< schedule_dep > already_matched;
     for(size_t i = 0; i < dag.get_units().size(); i++)
     {
         const schedule_unit *unit = dag.get_units()[i];
@@ -145,7 +166,7 @@ void dump_schedule_dag_to_dot_file(const schedule_dag& dag, const char *filename
 
         fout << tab << name_map[dep.from()] << " -> " << name_map[dep.to()] << "[\n";
         fout << tab << tab << "label = \"" << oss.str() << "\"\n";
-        emit_dep_color_and_style(fout, tab, opts, dep);
+        emit_dep_color_and_style(fout, tab, opts, dep, already_matched);
         
         fout << tab << "];\n";
     }

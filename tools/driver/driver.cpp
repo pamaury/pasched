@@ -263,8 +263,11 @@ int __main(int argc, char **argv)
     dag_accumulator after_unique_accum(false);
     dag_accumulator accumulator;
     pipeline.add_stage(new pasched::unique_reg_ids);
-    pipeline.add_stage(new pasched::handle_physical_regs);
+    /* do a pre-stage removal of useless order deps because the handling of physical
+     * registers will be much faster when there are less edges */
+    pipeline.add_stage(new pasched::strip_useless_order_deps);
     pipeline.add_stage(&after_unique_accum);
+    pipeline.add_stage(new pasched::handle_physical_regs);
     pipeline.add_stage(&loop);
     pipeline.add_stage(&accumulator);
     
@@ -303,6 +306,7 @@ int __main(int argc, char **argv)
     delete dag_copy;
     //debug_view_dag(after_unique_accum.get_dag());
     //debug_view_chain(chain);
+    debug_view_scheduled_dag(after_unique_accum.get_dag(), chain);
 
     /*
     std::cout << "Status: Mod=" << status.has_modified_graph() << " Junction=" << status.is_junction()

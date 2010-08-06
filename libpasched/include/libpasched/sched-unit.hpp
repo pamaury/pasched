@@ -70,6 +70,19 @@ class schedule_dep
         return !operator==(d);
     }
 
+    inline bool operator<(const schedule_dep& d) const
+    {
+        if(m_from < d.m_from) return true;
+        if(m_from > d.m_from) return false;
+        if(m_to < d.m_to) return true;
+        if(m_to > d.m_to) return false;
+        if(m_kind < d.m_kind) return true;
+        if(m_kind > d.m_kind) return false;
+        if(is_data() && m_reg < d.m_reg) return true;
+        if(is_data() && m_reg > d.m_reg) return false;
+        return false;
+    }
+
     static reg_t generate_unique_reg_id();
 
     private:

@@ -238,8 +238,12 @@ struct dag_printer_opt
     {
         /* Which dep (will match all of them !) */
         schedule_dep dep;
-        /* Which color */
+        /* Which color (empty if unspecified) */
         std::string color;
+        /* Which style (empty if unspecified) */
+        std::string style;
+        /* Match all or only one ? */
+        bool match_all;
     }color_dep;
 };
 

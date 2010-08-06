@@ -18,6 +18,8 @@ void debug_view_chain(const schedule_chain& dag, const std::vector< dag_printer_
  */
 void debug_view_dag(const schedule_dag& dag);
 void debug_view_dag(const schedule_dag& dag, const std::vector< dag_printer_opt >& opts);
+void debug_view_scheduled_dag(const schedule_dag& dag, const schedule_chain& chain);
+void debug_view_scheduled_dag(const schedule_dag& dag, const schedule_chain& chain, const std::vector< dag_printer_opt >& opts);
 
 
 }

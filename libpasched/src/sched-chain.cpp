@@ -46,6 +46,40 @@ bool schedule_chain::check_against_dag(const schedule_dag& dag) const
         if(pos[d.from()] >= pos[d.to()])
             fail("schedule_chain::check_against_dag detected unsatisfied dependency");
     }
+
+    /* then check that the same physical register is not alive twice at the same time */
+    std::map< schedule_dep::reg_t, size_t > phys_reg_uses;
+    for(size_t i = 0; i < get_unit_count(); i++)
+    {
+        const schedule_unit *unit = get_unit_at(i);
+        /* destroy physical registers if any */
+        for(size_t j = 0; j < dag.get_preds(unit).size(); j++)
+        {
+            const schedule_dep& dep = dag.get_preds(unit)[j];
+            if(!dep.is_phys())
+                continue;
+            assert(phys_reg_uses.find(dep.reg()) != phys_reg_uses.end() && "inconsistent phys reg uses map");
+            /* remove this unit from the use count of the physical register */
+            if((--phys_reg_uses[dep.reg()]) == 0)
+                /* if the set is now empty, remove entry */
+                phys_reg_uses.erase(dep.reg());
+        }
+        /* create physical registers if any */
+        for(size_t j = 0; j < dag.get_succs(unit).size(); j++)
+        {
+            const schedule_dep& dep = dag.get_succs(unit)[j];
+            if(!dep.is_phys())
+                continue;
+            /* if the physical register is already alive, then the schedule is not valid */
+            if(phys_reg_uses.find(dep.reg()) != phys_reg_uses.end())
+                fail("schedule_chain::check_against_dag detected that the same physical register is alive at the same point"
+                        "but with different creators, this will result in miscompilation!");
+            phys_reg_uses[dep.reg()]++;
+        }
+    }
+
+    assert(phys_reg_uses.size() == 0 && "not all physical register have been destroyed: partial dag ?");
+    
     return true;
 }
 
@@ -95,7 +129,9 @@ size_t schedule_chain::compute_rp_against_dag(const schedule_dag& dag, bool igno
         set = dag.get_reg_create(unit);
         for(it = set.begin(); it != set.end(); ++it)
         {
-            assert(nb_use_left.find(*it) == nb_use_left.end() && "Created variable is already alive !");
+            assert(nb_use_left.find(*it) == nb_use_left.end() &&
+                "Created variable is already alive ! Either this is wrong or fucked up with physical registers, "
+                "check with schedule_chain::check_against_dag");
 
             nb_use_left[*it] = 0;
             for(size_t i = 0; i < dag.get_succs(unit).size(); i++)
