@@ -283,7 +283,7 @@ int __main(int argc, char **argv)
     #if 0
     pasched::simple_rp_scheduler basic_sched;
     pasched::mris_ilp_scheduler sched(&basic_sched, 1000, true);
-    #elif 0
+    #elif 1
     pasched::simple_rp_scheduler basic_sched;
     pasched::exp_scheduler sched(&basic_sched, 0000, false);
     #else
@@ -304,7 +304,7 @@ int __main(int argc, char **argv)
      * reg renaming */
     std::cout << "RP=" << chain.compute_rp_against_dag(after_unique_accum.get_dag()) << "\n";
     delete dag_copy;
-    //debug_view_dag(after_unique_accum.get_dag());
+    debug_view_dag(accumulator.get_dag());
     //debug_view_chain(chain);
     debug_view_scheduled_dag(after_unique_accum.get_dag(), chain);
 

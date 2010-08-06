@@ -82,6 +82,10 @@ class schedule_dag
      * Compute the set of register created by a schedule unit
      */
     virtual std::set< schedule_dep::reg_t > get_reg_create(
+        const schedule_unit *unit, bool pick_virt = true, bool pick_phys = true) const;
+    virtual std::set< schedule_dep::reg_t > get_reg_phys_create(
+        const schedule_unit *unit) const;
+    virtual std::set< schedule_dep::reg_t > get_reg_virt_create(
         const schedule_unit *unit) const;
     /**
      * Compute the set of registers used by a schedule unit

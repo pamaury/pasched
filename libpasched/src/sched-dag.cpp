@@ -123,13 +123,27 @@ std::set< const schedule_unit * > schedule_dag::get_reachable(const schedule_uni
 }
 
 std::set< schedule_dep::reg_t > schedule_dag::get_reg_create(
-    const schedule_unit *unit) const
+    const schedule_unit *unit, bool pick_virt, bool pick_phys) const
 {
     std::set< schedule_dep::reg_t > s;
     for(size_t i = 0; i < get_succs(unit).size(); i++)
-        if(get_succs(unit)[i].is_data())
+        if(get_succs(unit)[i].is_virt() && pick_virt)
+            s.insert(get_succs(unit)[i].reg());
+        else if(get_succs(unit)[i].is_phys() && pick_phys)
             s.insert(get_succs(unit)[i].reg());
     return s;
+}
+
+std::set< schedule_dep::reg_t > schedule_dag::get_reg_phys_create(
+    const schedule_unit *unit) const
+{
+    return get_reg_create(unit, false, true);
+}
+
+std::set< schedule_dep::reg_t > schedule_dag::get_reg_virt_create(
+    const schedule_unit *unit) const
+{
+    return get_reg_create(unit, true, false);
 }
 
 std::set< schedule_dep::reg_t > schedule_dag::get_reg_use(

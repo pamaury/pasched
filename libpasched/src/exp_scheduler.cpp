@@ -136,10 +136,12 @@ namespace
     {
         /* list of used registers */
         std::vector< schedule_dep::reg_t > reg_use;
-        /* list of created registers */
-        std::vector< schedule_dep::reg_t > reg_create;
+        /* list of created phys registers */
+        std::vector< schedule_dep::reg_t > reg_phys_create;
+        /* list of all created registers */
+        std::vector< schedule_dep::reg_t > reg_all_create;
         /* number of uses of each created variable */
-        std::vector< size_t > reg_create_use_count;
+        std::vector< size_t > reg_all_create_use_count;
         /* list of predecessors */
         std::vector< unit_idx_t > unit_depend;
         /* list of successors */
@@ -259,19 +261,24 @@ namespace
             st.unit_sinfo[u].reg_use.reserve(rset.size());
             for(rit = rset.begin(); rit != rset.end(); ++rit)
                 st.unit_sinfo[u].reg_use.push_back(*rit);
-            /* reg_create */
-            rset = dag.get_reg_create(unit);
-            st.unit_sinfo[u].reg_create.reserve(rset.size());
+            /* reg_phys_create */
+            rset = dag.get_reg_phys_create(unit);
+            st.unit_sinfo[u].reg_phys_create.reserve(rset.size());
             for(rit = rset.begin(); rit != rset.end(); ++rit)
-                st.unit_sinfo[u].reg_create.push_back(*rit);
-            /* reg_create_use_count */
-            st.unit_sinfo[u].reg_create_use_count.resize(rset.size());
-            for(size_t i = 0; i < st.unit_sinfo[u].reg_create.size(); i++)
+                st.unit_sinfo[u].reg_phys_create.push_back(*rit);
+            /* reg_all_create */
+            rset = dag.get_reg_create(unit);
+            st.unit_sinfo[u].reg_all_create.reserve(rset.size());
+            for(rit = rset.begin(); rit != rset.end(); ++rit)
+                st.unit_sinfo[u].reg_all_create.push_back(*rit);
+            /* reg_all_create_use_count */
+            st.unit_sinfo[u].reg_all_create_use_count.resize(rset.size());
+            for(size_t i = 0; i < st.unit_sinfo[u].reg_all_create.size(); i++)
                 for(size_t j = 0; j < dag.get_succs(unit).size(); j++)
                 {
                     const schedule_dep& dep = dag.get_succs(unit)[j];
-                    if(dep.is_data() && dep.reg() == st.unit_sinfo[u].reg_create[i])
-                        st.unit_sinfo[u].reg_create_use_count[i]++;
+                    if(dep.is_data() && dep.reg() == st.unit_sinfo[u].reg_all_create[i])
+                        st.unit_sinfo[u].reg_all_create_use_count[i]++;
                 }
             /* irp */
             st.unit_sinfo[u].irp = unit->internal_register_pressure();
@@ -460,8 +467,28 @@ namespace
             /* save RP */
             size_t old_rp = st.cur_rp;
 
-            /* remove unit from schedulables */
             unit_idx_t unit = st.schedulable[i];
+
+            /* Even before trying, check that this unit does not create a physical register that
+             * is already alive */
+            bool phys_prevent_sched = false;
+            for(size_t j = 0; j < st.unit_sinfo[unit].reg_phys_create.size(); j++)
+            {
+                schedule_dep::reg_t reg = st.unit_sinfo[unit].reg_phys_create[j];
+                if(st.live_regs.find(reg) == st.live_regs.end())
+                    continue; /* safe, it's not alive */
+                /* unsafe, it is alive, so for the unit to be schedulable we must make sure
+                 * that it also destroys the register, that is, that this is the last use of
+                 * the register */
+                if(container_contains(st.unit_sinfo[unit].reg_use, reg) &&
+                        st.live_regs[reg].nb_use_left == 1)
+                    continue; /* safe */
+                /* the unit is not schedulable */
+                phys_prevent_sched = true;
+            }
+            if(phys_prevent_sched)
+                continue;
+            /* remove unit from schedulables */
             unordered_vector_remove(i, st.schedulable);
             /* and add it to current schedule */
             st.cur_schedule.push_back(unit);
@@ -484,13 +511,13 @@ namespace
             size_t inst_rp = st.live_regs.size() + st.unit_sinfo[unit].irp;
 
             /* create regs */
-            for(size_t j = 0; j < st.unit_sinfo[unit].reg_create.size(); j++)
+            for(size_t j = 0; j < st.unit_sinfo[unit].reg_all_create.size(); j++)
             {
-                schedule_dep::reg_t reg = st.unit_sinfo[unit].reg_create[j];
+                schedule_dep::reg_t reg = st.unit_sinfo[unit].reg_all_create[j];
                 assert(st.live_regs.find(reg) == st.live_regs.end() && "Created variable is already alive !");
 
                 st.live_regs[reg].id = reg;
-                st.live_regs[reg].nb_use_left = st.unit_sinfo[unit].reg_create_use_count[j];
+                st.live_regs[reg].nb_use_left = st.unit_sinfo[unit].reg_all_create_use_count[j];
             }
 
             /* compute RP */
@@ -557,11 +584,11 @@ namespace
             st.schedulable[i] = unit;
 
             /* uncreate regs */
-            for(size_t j = 0; j < st.unit_sinfo[unit].reg_create.size(); j++)
+            for(size_t j = 0; j < st.unit_sinfo[unit].reg_all_create.size(); j++)
             {
-                schedule_dep::reg_t reg = st.unit_sinfo[unit].reg_create[j];
+                schedule_dep::reg_t reg = st.unit_sinfo[unit].reg_all_create[j];
                 assert(st.live_regs.find(reg) != st.live_regs.end() && "Created variable is not alive !");
-                assert(st.live_regs[reg].nb_use_left ==  st.unit_sinfo[unit].reg_create_use_count[j]
+                assert(st.live_regs[reg].nb_use_left ==  st.unit_sinfo[unit].reg_all_create_use_count[j]
                         && "Created variable has wrong use count !");
                 st.live_regs.erase(reg);
             }

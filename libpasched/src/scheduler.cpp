@@ -107,12 +107,37 @@ void simple_rp_scheduler::schedule(pasched::schedule_dag& dag, pasched::schedule
         for(size_t i = 0; i < schedulable.size(); i++)
         {
             const schedule_unit *unit = schedulable[i];
+            std::set< schedule_dep::reg_t > phys_create = dag.get_reg_phys_create(unit);
+            std::set< schedule_dep::reg_t > use = dag.get_reg_use(unit);
+            /* first check that the node can be schedule: it must not create a physical register already in use
+             * except if it also kills it, tricky ! */
+            bool not_schedulable = false;
+            for(std::set< schedule_dep::reg_t >::iterator it = phys_create.begin(); it != phys_create.end(); ++it)
+            {
+                if(live_regs.find(*it) == live_regs.end())
+                    continue; /* safe */
+                /* unsafe, it create a physical register so it must kill it otherwise it's not a valid schedule:
+                 * 1) it must be in the reg use list
+                 * 2) it must be the last use of it */
+                if(use.find(*it) != use.end())
+                {
+                    assert(live_regs.find(*it) != live_regs.end() && "Use variable is not alive");
+                    if(live_regs[*it].nb_use_left == 1)
+                        continue;
+                }
+                
+                not_schedulable = true;
+                break;
+            }
+            if(not_schedulable)
+                continue;
+            /* if there are dangerous phys, check the instruction also destroy them */
             /* compute score : max(irp, created_reg) - destroyed_reg */
             int score =
                 std::max((int)unit->internal_register_pressure(),
                     (int)dag.get_reg_create(unit).size());
             /* loop through each variable used and determine if it is destroyed or not */
-            std::set< schedule_dep::reg_t > use = dag.get_reg_use(unit);
+            
             for(std::set< schedule_dep::reg_t >::iterator it = use.begin(); it != use.end(); ++it)
             {
                 assert(live_regs.find(*it) != live_regs.end() && "Use variable is not alive");
@@ -129,7 +154,7 @@ void simple_rp_scheduler::schedule(pasched::schedule_dag& dag, pasched::schedule
                 best_idx = i;
             }
         }
-
+        assert(best_score != INT_MAX && "no schedulable unit ?");
         /* Schedule it ! */
         
         /* remove from schedulable list */
