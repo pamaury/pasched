@@ -22,7 +22,7 @@ schedule_chain::~schedule_chain()
 
 bool schedule_chain::check_against_dag(const schedule_dag& dag) const
 {
-    #if 0
+    #if 1
     #define fail(msg) return false
     #else
     #define fail(msg) std::runtime_error(msg)
@@ -74,6 +74,12 @@ bool schedule_chain::check_against_dag(const schedule_dag& dag) const
             if(phys_reg_uses.find(dep.reg()) != phys_reg_uses.end())
                 fail("schedule_chain::check_against_dag detected that the same physical register is alive at the same point"
                         "but with different creators, this will result in miscompilation!");
+        }
+        for(size_t j = 0; j < dag.get_succs(unit).size(); j++)
+        {
+            const schedule_dep& dep = dag.get_succs(unit)[j];
+            if(!dep.is_phys())
+                continue;
             phys_reg_uses[dep.reg()]++;
         }
     }

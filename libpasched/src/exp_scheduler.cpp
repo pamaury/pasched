@@ -116,7 +116,7 @@ namespace
             return !operator==(o);
         }
 
-        static const size_t MAX_CHUNKS = 10; /* should not be a limit in practise */
+        static const size_t MAX_CHUNKS = 100; /* should not be a limit */
         static const size_t BITS_PER_CHUNKS = sizeof(uintmax_t) * 8;
         uintmax_t m_chunks[MAX_CHUNKS];
         size_t m_nb_chunks;

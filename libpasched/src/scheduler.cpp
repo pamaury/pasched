@@ -37,14 +37,76 @@ rand_scheduler::~rand_scheduler()
 
 void rand_scheduler::schedule(pasched::schedule_dag& dag, pasched::schedule_chain& c) const
 {
-    /* do a stupid and inefficient list scheduling */
+    /* do a stupid and inefficient bottom-up scheduling */
     STM_START(rand_scheduler)
+    std::map< schedule_dep::reg_t, std::set< const schedule_unit * > > live_reg_uses;
+    schedule_dag *cpy = dag.dup();
 
     while(dag.get_roots().size() > 0)
     {
-        c.append_unit(dag.get_roots()[0]);
-        dag.remove_unit(dag.get_roots()[0]);
+        const schedule_unit *unit;
+        for(size_t i = 0; i < dag.get_roots().size(); i++)
+        {
+            unit = dag.get_roots()[i];
+            for(size_t j = 0; j < dag.get_succs(unit).size(); j++)
+            {
+                const schedule_dep& dep = dag.get_succs(unit)[j];
+                if(!dep.is_phys())
+                    continue;
+                if(!live_reg_uses[dep.reg()].empty() &&
+                        (live_reg_uses[dep.reg()].size() != 1 ||
+                            *live_reg_uses[dep.reg()].begin() != unit))
+                    goto Lskip;
+            }
+            break;
+            
+            Lskip:
+            unit = 0;
+            continue;
+        }
+
+        if(!unit)
+        {
+            std::vector< dag_printer_opt > opts;
+            for(size_t i = 0; i < c.get_unit_count(); i++)
+            {
+                dag_printer_opt o;
+                o.type = dag_printer_opt::po_color_node;
+                o.color_node.color = "magenta";
+                o.color_node.unit = c.get_unit_at(i);
+                opts.push_back(o);
+                if((i + 1) == c.get_unit_count())
+                    continue;
+                schedule_dep dep(
+                    c.get_unit_at(i),
+                    c.get_unit_at(i + 1),
+                    schedule_dep::order_dep);
+                cpy->add_dependency(dep);
+                o.type = dag_printer_opt::po_color_dep;
+                o.color_dep.color = "green";
+                o.color_dep.dep = dep;
+                o.color_dep.match_all = false;
+                opts.push_back(o);
+            }
+            debug_view_dag(*cpy, opts);
+        }
+        assert(unit && "no schedulable unit, backtracking not handled yet");
+
+        std::map< schedule_dep::reg_t, std::set< const schedule_unit * > >::iterator it;
+        for(it = live_reg_uses.begin(); it != live_reg_uses.end(); ++it)
+            it->second.erase(unit);
+        for(size_t j = 0; j < dag.get_succs(unit).size(); j++)
+        {
+            const schedule_dep& dep = dag.get_succs(unit)[j];
+            if(!dep.is_phys())
+                continue;
+            live_reg_uses[dep.reg()].insert(dep.to());
+        }
+        c.append_unit(unit);
+        dag.remove_unit(unit);
     }
+
+    delete cpy;
 
     STM_STOP(rand_scheduler)
 }

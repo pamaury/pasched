@@ -3,6 +3,7 @@
 #include <fstream>
 #include <stdexcept>
 #include <sstream>
+#include <cassert>
 
 namespace PAMAURY_SCHEDULER_NS
 {
@@ -94,14 +95,14 @@ namespace
             break;
         }
 
-        if(dep.kind() == schedule_dep::order_dep)
+        if(dep.is_order())
         {
             if(!has_color)
                 fout << tab << tab << "color = blue\n";
             if(!has_style)
                 fout << tab << tab << "style = dashed\n";
         }
-        else if(dep.kind() == schedule_dep::phys_dep)
+        else if(dep.is_phys())
         {
             if(!has_color)
                 fout << tab << tab << "color = red\n";
@@ -164,10 +165,11 @@ void dump_schedule_dag_to_dot_file(const schedule_dag& dag, const char *filename
             default: oss << "?"; break;
         }
 
-        fout << tab << name_map[dep.from()] << " -> " << name_map[dep.to()] << "[\n";
+        assert(name_map.find(dep.from()) != name_map.end());
+        assert(name_map.find(dep.to()) != name_map.end());
+        fout << tab << name_map[dep.from()] << " -> " << name_map[dep.to()] << " [\n";
         fout << tab << tab << "label = \"" << oss.str() << "\"\n";
         emit_dep_color_and_style(fout, tab, opts, dep, already_matched);
-        
         fout << tab << "];\n";
     }
 

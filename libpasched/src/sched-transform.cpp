@@ -1757,6 +1757,12 @@ void handle_physical_regs::transform(schedule_dag& dag, const scheduler& s, sche
                 for(size_t j = i + 1; j < creators.size(); j++)
                     if(interfere[i][j])
                     {
+                        /* check consistency */
+                        if(partial_order[i][j] && partial_order[j][i])
+                        {
+                            debug_view_dag(dag);
+                            throw std::runtime_error("graph is not schedulable because of phys regs");
+                        }
                         if(partial_order[i][j])
                             partial_list.push_back(std::make_pair(creators[i], creators[j]));
                         else if(partial_order[j][i])

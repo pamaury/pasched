@@ -50,7 +50,7 @@ void dump_schedule_dag_to_lsd_stream(const schedule_dag& dag, std::ostream& fout
             else if(dep.is_order())
                 fout << "order\n";
             else if(dep.is_phys())
-                fout << "phys\n";
+                fout << "phys Reg " << dep.reg() << "\n";
         }
     }
 }

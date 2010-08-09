@@ -168,7 +168,7 @@ class schedule_dag
      *
      * NOTE: the input table is resized and the name map is cleared */
     virtual void build_path_map(std::vector< std::vector< bool > >& path_map,
-        std::map< const schedule_unit *, size_t >& name_map);
+        std::map< const schedule_unit *, size_t >& name_map) const;
 };
 
 /**

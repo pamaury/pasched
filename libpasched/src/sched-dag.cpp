@@ -592,7 +592,7 @@ namespace
 MTM_STAT(TM_DECLARE(schedule_dag__build_path_map, "mtm-build_path_map"))
 
 void schedule_dag::build_path_map(std::vector< std::vector< bool > >& path,
-        std::map< const schedule_unit *, size_t >& name_map)
+        std::map< const schedule_unit *, size_t >& name_map) const
 {
     MTM_STAT(TM_START(schedule_dag__build_path_map))
     /* build name map and resize path */
