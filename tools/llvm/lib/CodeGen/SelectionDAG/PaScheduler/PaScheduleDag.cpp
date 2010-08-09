@@ -11,6 +11,7 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/ADT/PriorityQueue.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/Statistic.h"
 #include <climits>
 #include <cstdio>
@@ -23,6 +24,23 @@ using namespace llvm;
  * PaScheduleDAG
  */
 class LLVMScheduleUnit;
+
+struct FastPriorityQueue {
+    SmallVector<SUnit *, 16> Queue;
+
+    bool empty() const { return Queue.empty(); }
+    
+    void push(SUnit *U) {
+      Queue.push_back(U);
+    }
+
+    SUnit *pop() {
+      if (empty()) return NULL;
+      SUnit *V = Queue.back();
+      Queue.pop_back();
+      return V;
+    }
+};
 
 class PaScheduleDAG : public ScheduleDAGSDNodes
 {
@@ -51,6 +69,11 @@ private:
         const pasched::schedule_dag& dag,
         std::set< pasched::schedule_dep::reg_t >& phys_regs,
         const std::map< SUnit *, const LLVMScheduleUnit * >& name_map);
+    bool AvoidPhysRegInterferences(
+        const pasched::schedule_dag& dag,
+        std::set< pasched::schedule_dep::reg_t >& phys_regs,
+        const std::map< SUnit *, const LLVMScheduleUnit * >& name_map);
+
     EVT GetPhysicalRegisterVT(SDNode *N, unsigned Reg) const;
     void CheckScheduleForPhysRegs(const pasched::schedule_dag& dag);
     SUnit *CloneInstruction(
@@ -61,8 +84,29 @@ private:
         pasched::schedule_dag& dag,
         std::map< SUnit *, const LLVMScheduleUnit * >& map,
         std::set< pasched::schedule_dep::reg_t >& phys_deps);
+    /* hack */
+    void ListScheduleBottomUp();
+    bool DelayForLiveRegsBottomUp(SUnit *SU);
+    void ScheduleNodeBottomUp(SUnit *SU);
+    void ReleasePredecessors(SUnit *SU);
+    void ReleasePred(SUnit *SU, SDep *PredEdge);
+
+    void AddPred(SUnit *SU, const SDep &D) {
+        SU->addPred(D);
+    }
+
+    /// RemovePred - removes a predecessor edge from SUnit SU.
+    /// This returns true if an edge was removed.
+    void RemovePred(SUnit *SU, const SDep &D) {
+        SU->removePred(D);
+    }
+    unsigned NumLiveRegs;
+    std::vector<SUnit*> LiveRegDefs;
+    FastPriorityQueue AvailableQueue;
     
     bool ForceUnitLatencies() const { return true; }
+
+    std::set< SUnit * > m_units_to_ignore;
 };
 
 class LLVMScheduleUnitBase : public pasched::schedule_unit
@@ -199,7 +243,11 @@ std::set< pasched::schedule_dep::reg_t > PaScheduleDAG::ComputeClobberRegs(SUnit
         if(!TID.ImplicitDefs)
           continue;
         for(const unsigned *Reg = TID.ImplicitDefs; *Reg; ++Reg)
+        {
             set.insert(*Reg);
+            for(const unsigned *Alias = TRI->getAliasSet(*Reg); *Alias; Alias++)
+                set.insert(*Alias);
+        }
     }
 
     return set;
@@ -425,7 +473,8 @@ SUnit *PaScheduleDAG::CloneInstruction(
         if(is_new_load)
             new_su->addPred(SDep(load_su, SDep::Order, load_su->Latency));
 
-        su = new_su;
+        /* old instruction is now ignored */
+        m_units_to_ignore.insert(su);
         std::cout << "Unfold\n";
         return new_su;
     }
@@ -571,9 +620,12 @@ bool PaScheduleDAG::CheckPhysRegAndUpdate(
             SUnit *new_def = CloneInstruction(su_a, tricky_units, su_name_map);
             if(new_def)
             {
+                #if 0
                 new_def->addPred(SDep(su_a, SDep::Order, /*Latency=*/1,
                              /*Reg=*/0, /*isNormalMemory=*/false,
                              /*isMustAlias=*/false, /*isArtificial=*/true));
+                #endif
+                /*
                 pasched::generic_schedule_dag dag2;
                 std::map< SUnit *, const LLVMScheduleUnit * > map;
                 std::set< pasched::schedule_dep::reg_t > phys_deps;
@@ -581,6 +633,7 @@ bool PaScheduleDAG::CheckPhysRegAndUpdate(
                 dag2.add_units(dag.get_units());
                 dag2.add_dependencies(dag.get_deps());
                 debug_view_dag(dag2);
+                */
                 return true;
             }
         }
@@ -627,6 +680,109 @@ bool PaScheduleDAG::CheckPhysRegAndUpdate(
     return false;
 }
 
+bool PaScheduleDAG::AvoidPhysRegInterferences(
+        const pasched::schedule_dag& dag,
+        std::set< pasched::schedule_dep::reg_t >& phys_regs,
+        const std::map< SUnit *, const LLVMScheduleUnit * >& su_name_map)
+{
+    /* loop throught each register */
+    std::set< pasched::schedule_dep::reg_t >::iterator rit;
+    for(rit = phys_regs.begin(); rit != phys_regs.end(); ++rit)
+    {
+        pasched::schedule_dep::reg_t reg = *rit;
+        /* make a list of creators */
+        std::vector< const pasched::schedule_unit * > creators;
+        /* list of phys regs succ dep on R for each creator */
+        std::vector< std::vector< const pasched::schedule_unit * > > creators_phys_succs;
+        for(size_t i = 0; i < dag.get_units().size(); i++)
+        {
+            const pasched::schedule_unit *unit = dag.get_units()[i];
+            std::set< pasched::schedule_dep::reg_t > set = dag.get_reg_phys_create(unit);
+            if(set.find(reg) != set.end())
+            {
+                creators.push_back(unit);
+                std::vector< const pasched::schedule_unit * > list;
+                for(size_t j = 0; j < dag.get_succs(unit).size(); j++)
+                {
+                    const pasched::schedule_dep& dep = dag.get_succs(unit)[j];
+                    if(dep.is_phys() && dep.reg() == reg)
+                        list.push_back(dep.to());
+                }
+                creators_phys_succs.push_back(list);
+            }
+        }
+        /* build a path map */
+        std::vector< std::vector< bool > > path;
+        std::map< const pasched::schedule_unit *, size_t > name_map;
+        dag.build_path_map(path, name_map);
+        /* consider each pair of creators and build a list of conflicts */
+        std::vector< std::pair< size_t, size_t > > conflicts;
+
+        for(size_t i = 0; i < creators.size(); i++)
+            for(size_t j = 0; j < creators.size(); j++)
+            {
+                if(i == j)
+                    continue;
+                /* a pair (U,V) is in conflict w.r.t to a phys R if there
+                 * is a successor S(U) of U using R and a successor S(V)
+                 * of V using R such as there is path from V to S(U) and
+                 * one from S(U) to S(V)
+                 * OR
+                 * if there is a path from U to V and then from V to a
+                 * a successor S(U) of U */
+
+                bool order = false;
+                for(size_t k = 0; k < creators_phys_succs[j].size(); k++)
+                {
+                    const pasched::schedule_unit *succ = creators_phys_succs[j][k];
+                    if(succ != creators[i] && path[name_map[creators[i]]][name_map[succ]])
+                        order = true;
+                }
+
+                if(!order)
+                    continue;
+
+                bool complete = true;
+                for(size_t k = 0; k < creators_phys_succs[i].size(); k++)
+                    if(!path[name_map[creators_phys_succs[i][k]]][name_map[creators[j]]])
+                    {
+                        const pasched::schedule_unit *succ = creators_phys_succs[i][k];
+                        const LLVMScheduleUnitBase *base = static_cast< const LLVMScheduleUnitBase * >(succ);
+                        if(base->is_llvm_unit())
+                            complete = false;
+                    }
+                if(!path[name_map[creators[i]]][name_map[creators[j]]])
+                    complete = false;
+
+                if(!complete)
+                    conflicts.push_back(std::make_pair(i, j));
+            }
+        /* if no conflicts, we are done (for this register !) */
+        if(conflicts.size() == 0)
+            continue;
+        /* only consider first conflict */
+        const pasched::schedule_unit *a = creators[conflicts[0].first];
+        const pasched::schedule_unit *b = creators[conflicts[0].second];
+        SUnit *a_su = static_cast< const LLVMScheduleUnit * >(a)->GetSU();
+        SUnit *b_su = static_cast< const LLVMScheduleUnit * >(b)->GetSU();
+        /* Add a dependency between all successors of a to b */
+        for(size_t i = 0; i < creators_phys_succs[conflicts[0].first].size(); i++)
+        {
+            const pasched::schedule_unit *succ = creators_phys_succs[conflicts[0].first][i];
+            const LLVMScheduleUnitBase *base = static_cast< const LLVMScheduleUnitBase * >(succ);
+            if(!base->is_llvm_unit())
+                continue;
+            SUnit *succ_su = static_cast< const LLVMScheduleUnit * >(base)->GetSU();
+
+            b_su->addPred(SDep(succ_su, SDep::Order));
+        }
+        b_su->addPred(SDep(a_su, SDep::Order));
+        return true;
+    }
+
+    return false;
+}
+
 void PaScheduleDAG::BuildPaSchedGraph(
     pasched::schedule_dag& dag,
     std::map< SUnit *, const LLVMScheduleUnit * >& map,
@@ -639,6 +795,9 @@ void PaScheduleDAG::BuildPaSchedGraph(
     /* build name map */
     for(size_t u = 0; u < SUnits.size(); u++)
     {
+        if(m_units_to_ignore.find(&SUnits[u]) != m_units_to_ignore.end())
+            continue;
+        
         LLVMScheduleUnit *unit = new LLVMScheduleUnit(
             &SUnits[u],
             getGraphNodeLabel(&SUnits[u]),
@@ -649,6 +808,8 @@ void PaScheduleDAG::BuildPaSchedGraph(
     /* build the schedule graph */
     for(size_t u = 0; u < SUnits.size(); u++)
     {
+        if(m_units_to_ignore.find(&SUnits[u]) != m_units_to_ignore.end())
+            continue;
         /* Explicit def/use */
         SUnit& unit = SUnits[u];
         for(size_t i = 0; i < unit.Succs.size(); i++)
@@ -680,6 +841,8 @@ void PaScheduleDAG::BuildPaSchedGraph(
     for(size_t u = 0; u < SUnits.size(); u++)
     {
         SUnit& unit = SUnits[u];
+        if(m_units_to_ignore.find(&unit) != m_units_to_ignore.end())
+            continue;
         /* Clobbered registers */
         std::set< pasched::schedule_dep::reg_t > create = dag.get_reg_phys_create(map[&unit]);
         std::set< pasched::schedule_dep::reg_t > clob = map[&unit]->get_clobber_regs();
@@ -726,11 +889,12 @@ void PaScheduleDAG::Schedule()
     /* iterate as long as the current phys reg layout prevents a valid scheduling
      * and solve them with duplication or cross class copies */
     int iterations = 0;
+
+    m_units_to_ignore.clear();
     while(true)
     {
         std::set< pasched::schedule_dep::reg_t > phys_deps; /* list of phys reg in deps */
         BuildPaSchedGraph(dag, map, phys_deps);
-            
         /* check if it schedulable and adds instructions if not */
         if(CheckPhysRegAndUpdate(dag, phys_deps, map))
         {
@@ -738,18 +902,36 @@ void PaScheduleDAG::Schedule()
                 delete dag.get_units()[i];
             iterations++;
         }
+        #if 0
+        else if(AvoidPhysRegInterferences(dag, phys_deps, map))
+        {
+            for(size_t i = 0; i < dag.get_units().size(); i++)
+                delete dag.get_units()[i];
+            iterations++;
+        }
+        #endif
         else
             break;
     }
+
+    #if 0
+    NumLiveRegs = 0;
+    LiveRegDefs.resize(TRI->getNumRegs(), NULL);  
+
+    // Execute the actual scheduling loop.
+    ListScheduleBottomUp();
+    #endif
+
+    #if 1
 
     /* build the transformation pipeline */
     pasched::transformation_pipeline pipeline;
     pasched::transformation_pipeline snd_stage_pipe;
     pasched::transformation_loop loop(&snd_stage_pipe);
-    dag_accumulator after_unique_acc;
+    dag_accumulator after_unique_acc(false);
     pipeline.add_stage(new pasched::unique_reg_ids);
     pipeline.add_stage(&after_unique_acc);
-    pipeline.add_stage(new pasched::handle_physical_regs(false));
+    pipeline.add_stage(new pasched::handle_physical_regs(true));
     //pipeline.add_stage(&loop);
     
     snd_stage_pipe.add_stage(new pasched::strip_dataless_units);
@@ -771,25 +953,68 @@ void PaScheduleDAG::Schedule()
     pasched::mris_ilp_scheduler sched(&fallback_sched, 10000, true);
     #elif 0
     pasched::exp_scheduler sched(&fallback_sched, 10000, false);
-    #else
+    #elif 1
     pasched::simple_rp_scheduler sched;
+    #else
+    pasched::rand_scheduler sched;
     #endif
     
     pasched::generic_schedule_chain chain;
     pasched::basic_status status;
-    /* make a copy of the dag */
-    pasched::schedule_dag *cpy = dag.dup();
     /* let's heat the cpu a bit */
     pipeline.transform(dag, sched, chain, status);
     /* Check the schedule */
-    assert(chain.check_against_dag(after_unique_acc.get_dag()));
+    if(!chain.check_against_dag(after_unique_acc.get_dag()))
+    {
+        debug_view_scheduled_dag(after_unique_acc.get_dag(), chain);
+        assert(false);
+    }
     /* fill output sequence with schedule */
+    #if 1
     for(size_t i = 0; i < chain.get_unit_count(); i++)
     {
         const LLVMScheduleUnitBase *base = static_cast< const LLVMScheduleUnitBase * >(chain.get_unit_at(i));
         if(base->is_llvm_unit())
-            Sequence.push_back(static_cast< const LLVMScheduleUnit * >(base)->GetSU());
+        {
+            SUnit *su = static_cast< const LLVMScheduleUnit * >(base)->GetSU();
+            Sequence.push_back(su);
+        }
     }
+
+    /* Check schedule enforce phys reg rules */
+    CheckScheduleForPhysRegs(after_unique_acc.get_dag());
+    /* Check schedule size */
+    size_t dead_nodes = 0;
+    for(size_t i = 0; i < SUnits.size(); i++)
+    {
+        if(m_units_to_ignore.find(&SUnits[i]) != m_units_to_ignore.end())
+            dead_nodes++;
+    }
+    assert(Sequence.size() + dead_nodes == SUnits.size() && "Invalid output schedule sequence size");
+    #else
+    std::vector< SUnit * > out_seq;
+    for(size_t i = 0; i < chain.get_unit_count(); i++)
+    {
+        const LLVMScheduleUnitBase *base = static_cast< const LLVMScheduleUnitBase * >(chain.get_unit_at(i));
+        if(base->is_llvm_unit())
+        {
+            SUnit *su = static_cast< const LLVMScheduleUnit * >(base)->GetSU();
+            out_seq.push_back(su);
+        }
+    }
+    
+    for(size_t i = 0; i < Sequence.size(); i++)
+        assert(pasched::container_contains(out_seq, Sequence[i]));
+
+    assert(out_seq.size() == Sequence.size());
+
+    Sequence.clear();
+    for(size_t i = 0; i < out_seq.size(); i++)
+        Sequence.push_back(out_seq[i]);
+    #endif
+
+    
+
     /* output hard dag if any */
     if(fallback_accum.get_dag().get_units().size() != 0)
     {
@@ -798,14 +1023,209 @@ void PaScheduleDAG::Schedule()
         raw_string_ostream buffer(str);
         buffer << "dag_%" << rand() << rand() << ".lsd";
         buffer.flush();
-        dump_schedule_dag_to_lsd_file(*cpy, str.c_str());
+        dump_schedule_dag_to_lsd_file(after_unique_acc.get_dag(), str.c_str());
 
         // FIXME: ugly output, should use llvm system
         llvm::outs() << "Output hard DAG to " << str << "\n";
     }
-    
-    CheckScheduleForPhysRegs(*cpy);
-    delete cpy;
+
+    #endif
+}
+
+/****
+ *
+ *
+ *
+ *
+ *
+ *
+ */
+/// ReleasePred - Decrement the NumSuccsLeft count of a predecessor. Add it to
+/// the AvailableQueue if the count reaches zero. Also update its cycle bound.
+void PaScheduleDAG::ReleasePred(SUnit *SU, SDep *PredEdge) {
+  SUnit *PredSU = PredEdge->getSUnit();
+
+#ifndef NDEBUG
+  if (PredSU->NumSuccsLeft == 0) {
+    dbgs() << "*** Scheduling failed! ***\n";
+    PredSU->dump(this);
+    dbgs() << " has been released too many times!\n";
+    llvm_unreachable(0);
+  }
+#endif
+  --PredSU->NumSuccsLeft;
+
+  // If all the node's successors are scheduled, this node is ready
+  // to be scheduled. Ignore the special EntrySU node.
+  if (PredSU->NumSuccsLeft == 0 && PredSU != &EntrySU) {
+    PredSU->isAvailable = true;
+    AvailableQueue.push(PredSU);
+  }
+}
+
+void PaScheduleDAG::ReleasePredecessors(SUnit *SU) {
+  // Bottom up: release predecessors
+  for (SUnit::pred_iterator I = SU->Preds.begin(), E = SU->Preds.end();
+       I != E; ++I) {
+    ReleasePred(SU, &*I);
+    if (I->isAssignedRegDep()) {
+      // This is a physical register dependency and it's impossible or
+      // expensive to copy the register. Make sure nothing that can 
+      // clobber the register is scheduled between the predecessor and
+      // this node.
+      if (!LiveRegDefs[I->getReg()])
+        LiveRegDefs[I->getReg()] = I->getSUnit();
+    }
+  }
+}
+
+/// ScheduleNodeBottomUp - Add the node to the schedule. Decrement the pending
+/// count of its predecessors. If a predecessor pending count is zero, add it to
+/// the Available queue.
+void PaScheduleDAG::ScheduleNodeBottomUp(SUnit *SU) {
+
+  Sequence.push_back(SU);
+
+  ReleasePredecessors(SU);
+
+  // Release all the implicit physical register defs that are live.
+  for (SUnit::succ_iterator I = SU->Succs.begin(), E = SU->Succs.end();
+       I != E; ++I) {
+    if (I->isAssignedRegDep()) {
+      if (LiveRegDefs[I->getReg()]) {
+        assert(LiveRegDefs[I->getReg()] == SU &&
+               "Physical register dependency violated?");
+        LiveRegDefs[I->getReg()] = NULL;
+      }
+    }
+  }
+
+  SU->isScheduled = true;
+}
+
+bool PaScheduleDAG::DelayForLiveRegsBottomUp(SUnit *SU){
+  SmallSet<unsigned, 4> RegAdded;
+  // If this node would clobber any "live" register, then it's not ready.
+  for (SUnit::pred_iterator I = SU->Preds.begin(), E = SU->Preds.end();
+       I != E; ++I) {
+    if (I->isAssignedRegDep()) {
+      unsigned Reg = I->getReg();
+      if (LiveRegDefs[Reg] && LiveRegDefs[Reg] != I->getSUnit()) {
+        RegAdded.insert(Reg);
+      }
+      for (const unsigned *Alias = TRI->getAliasSet(Reg);
+           *Alias; ++Alias)
+        if (LiveRegDefs[*Alias] && LiveRegDefs[*Alias] != I->getSUnit()) {
+          RegAdded.insert(*Alias);
+        }
+    }
+  }
+
+  for (SDNode *Node = SU->getNode(); Node; Node = Node->getFlaggedNode()) {
+    if (!Node->isMachineOpcode())
+      continue;
+    const TargetInstrDesc &TID = TII->get(Node->getMachineOpcode());
+    if (!TID.ImplicitDefs)
+      continue;
+    for (const unsigned *Reg = TID.ImplicitDefs; *Reg; ++Reg) {
+      if (LiveRegDefs[*Reg] && LiveRegDefs[*Reg] != SU) {
+        RegAdded.insert(*Reg);
+      }
+      for (const unsigned *Alias = TRI->getAliasSet(*Reg);
+           *Alias; ++Alias)
+        if (LiveRegDefs[*Alias] && LiveRegDefs[*Alias] != SU) {
+          RegAdded.insert(*Alias);
+        }
+    }
+  }
+  return !RegAdded.empty();
+}
+
+void PaScheduleDAG::ListScheduleBottomUp() {
+  unsigned CurCycle = 0;
+
+  // Release any predecessors of the special Exit node.
+  ReleasePredecessors(&ExitSU);
+
+  // Add root to Available queue.
+  if (!SUnits.empty()) {
+    SUnit *RootSU = &SUnits[DAG->getRoot().getNode()->getNodeId()];
+    assert(RootSU->Succs.empty() && "Graph root shouldn't have successors!");
+    RootSU->isAvailable = true;
+    AvailableQueue.push(RootSU);
+  }
+
+  // While Available queue is not empty, grab the node with the highest
+  // priority. If it is not ready put it back.  Schedule the node.
+  SmallVector<SUnit*, 4> NotReady;
+  Sequence.reserve(SUnits.size());
+  while (!AvailableQueue.empty()) {
+    bool Delayed = false;
+    SUnit *CurSU = AvailableQueue.pop();
+    while (CurSU) {
+      if (!DelayForLiveRegsBottomUp(CurSU))
+        break;
+      Delayed = true;
+
+      CurSU->isPending = true;  // This SU is not in AvailableQueue right now.
+      NotReady.push_back(CurSU);
+      CurSU = AvailableQueue.pop();
+    }
+
+    // All candidates are delayed due to live physical reg dependencies.
+    // Try code duplication or inserting cross class copies
+    // to resolve it.
+    if (Delayed && !CurSU) {
+        viewGraph();
+        std::vector< pasched::dag_printer_opt > opts;
+        std::map< SUnit *, const LLVMScheduleUnit * > map;
+        pasched::generic_schedule_dag dag;
+        std::set< pasched::schedule_dep::reg_t > phys_deps; /* list of phys reg in deps */
+        BuildPaSchedGraph(dag, map, phys_deps);
+        for(size_t i = 0; i < SUnits.size(); i++)
+        {
+            if(SUnits[i].isScheduled)
+            {
+                pasched::dag_printer_opt o;
+                o.type = pasched::dag_printer_opt::po_color_node;
+                o.color_node.unit = map[&SUnits[i]];
+                o.color_node.color = "magenta";
+                opts.push_back(o);
+            }
+            if(std::find(AvailableQueue.Queue.begin(), AvailableQueue.Queue.end(), &SUnits[i]) != AvailableQueue.Queue.end())
+            {
+                pasched::dag_printer_opt o;
+                o.type = pasched::dag_printer_opt::po_color_node;
+                o.color_node.unit = map[&SUnits[i]];
+                o.color_node.color = "green";
+                opts.push_back(o);
+            }
+        }
+        debug_view_dag(dag, opts);
+
+        assert(false && "don't insert copies !");
+    }
+
+    // Add the nodes that aren't ready back onto the available list.
+    for (unsigned i = 0, e = NotReady.size(); i != e; ++i) {
+      NotReady[i]->isPending = false;
+      // May no longer be available due to backtracking.
+      if (NotReady[i]->isAvailable)
+        AvailableQueue.push(NotReady[i]);
+    }
+    NotReady.clear();
+
+    if (CurSU)
+      ScheduleNodeBottomUp(CurSU);
+    ++CurCycle;
+  }
+
+  // Reverse the order since it is bottom up.
+  std::reverse(Sequence.begin(), Sequence.end());
+
+#ifndef NDEBUG
+  VerifySchedule(/*isBottomUp=*/true);
+#endif
 }
 
 /**

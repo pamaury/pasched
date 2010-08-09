@@ -15,8 +15,7 @@ void debug_view_dag(const schedule_dag& dag,
     dump_schedule_dag_to_dot_file(dag, dot_name.c_str(), opts);
     std::string svg_name(tmpnam(NULL));
     #if 1
-    if(system((std::string("dot -Tps -o ") + svg_name + " " + dot_name + " && gv " + svg_name).c_str()) != 0)
-        assert(false);
+    system((std::string("dot -Tps -o ") + svg_name + " " + dot_name + " && gv " + svg_name).c_str());
     #else
     system(("dotty " + dot_name).c_str());
     #endif

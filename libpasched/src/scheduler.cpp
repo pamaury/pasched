@@ -37,7 +37,7 @@ rand_scheduler::~rand_scheduler()
 
 void rand_scheduler::schedule(pasched::schedule_dag& dag, pasched::schedule_chain& c) const
 {
-    /* do a stupid and inefficient bottom-up scheduling */
+    /* do a stupid and scheduling */
     STM_START(rand_scheduler)
     std::map< schedule_dep::reg_t, std::set< const schedule_unit * > > live_reg_uses;
     schedule_dag *cpy = dag.dup();
