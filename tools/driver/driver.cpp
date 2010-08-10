@@ -270,22 +270,22 @@ int __main(int argc, char **argv)
     pipeline.add_stage(&loop);
     pipeline.add_stage(&accumulator);
     
-    snd_stage_pipe.add_stage(new pasched::strip_dataless_units);
-    snd_stage_pipe.add_stage(new pasched::strip_useless_order_deps);
-    snd_stage_pipe.add_stage(new pasched::simplify_order_cuts);
+    //snd_stage_pipe.add_stage(new pasched::strip_dataless_units);
+    //snd_stage_pipe.add_stage(new pasched::strip_useless_order_deps);
+    //snd_stage_pipe.add_stage(new pasched::simplify_order_cuts);
     snd_stage_pipe.add_stage(new pasched::handle_physical_regs);
-    snd_stage_pipe.add_stage(new pasched::split_def_use_dom_use_deps);
-    snd_stage_pipe.add_stage(new pasched::smart_fuse_two_units(false, true));
-    snd_stage_pipe.add_stage(new pasched::break_symmetrical_branch_merge);
-    snd_stage_pipe.add_stage(new pasched::collapse_chains);
-    snd_stage_pipe.add_stage(new pasched::split_merge_branch_units);
+    //snd_stage_pipe.add_stage(new pasched::split_def_use_dom_use_deps);
+    //snd_stage_pipe.add_stage(new pasched::smart_fuse_two_units(false, true));
+    //snd_stage_pipe.add_stage(new pasched::break_symmetrical_branch_merge);
+    //snd_stage_pipe.add_stage(new pasched::collapse_chains);
+    //snd_stage_pipe.add_stage(new pasched::split_merge_branch_units);
 
     #if 0
     pasched::simple_rp_scheduler basic_sched;
     pasched::mris_ilp_scheduler sched(&basic_sched, 1000, true);
-    #elif 0
+    #elif 1
     pasched::simple_rp_scheduler basic_sched;
-    pasched::exp_scheduler sched(&basic_sched, 10000, false);
+    pasched::exp_scheduler sched(&basic_sched, 5000, false);
     #else
     pasched::simple_rp_scheduler sched;
     #endif

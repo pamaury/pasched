@@ -757,13 +757,15 @@ void generic_schedule_dag::remove_dependency(schedule_dep d)
     #endif
 }
 
-void generic_schedule_dag::modify_dep(const schedule_dep& old, const schedule_dep& cur)
+void generic_schedule_dag::modify_dep(const schedule_dep& _old, const schedule_dep& cur)
 {
+    /* make a copy of the old one ! */
+    schedule_dep old = _old;
     assert(old.from() == cur.from() && old.to() == cur.to() && "You can't change from/to properties with modify_dep()");
-    
+
     unordered_find_and_modify(old, cur, m_deps, true);
     unordered_find_and_modify(old, cur, m_unit_map[old.from()].succs, true);
-    unordered_find_and_modify(old, cur, m_unit_map[cur.from()].succs, true);
+    unordered_find_and_modify(old, cur, m_unit_map[old.to()].preds, true);
     
     #ifdef AUTO_CHECK_CONSISTENCY
     std::string s;

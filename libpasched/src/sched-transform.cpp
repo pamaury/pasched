@@ -1685,7 +1685,7 @@ void handle_physical_regs::transform(schedule_dag& dag, const scheduler& s, sche
         reg_problem_map partials;
         /* create path map */
         std::vector< std::vector< bool > > path;
-        std::map< const schedule_unit *, size_t> name_map;
+        std::map< const schedule_unit *, size_t > name_map;
         dag.build_path_map(path, name_map);
         
         for(size_t i = 0; i < several_creators.size(); i++)
@@ -1794,9 +1794,9 @@ void handle_physical_regs::transform(schedule_dag& dag, const scheduler& s, sche
                 const schedule_unit *c_to = l[i].second;
                 /* for each successor S of C_from on register R, add a dependency
                  * from S to C_to */
-                for(size_t i = 0; i < dag.get_succs(c_from).size(); i++)
+                for(size_t j = 0; j < dag.get_succs(c_from).size(); j++)
                 {
-                    const schedule_dep& dep = dag.get_succs(c_from)[i];
+                    const schedule_dep& dep = dag.get_succs(c_from)[j];
                     if(dep.is_phys() && dep.reg() == it->first &&
                             !path[name_map[dep.to()]][name_map[c_to]])
                     {

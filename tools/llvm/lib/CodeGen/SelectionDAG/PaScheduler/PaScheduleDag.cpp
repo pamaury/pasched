@@ -65,6 +65,7 @@ private:
     bool ForceUnitLatencies() const { return true; }
 
     std::set< SUnit * > m_units_to_ignore;
+    std::map< SUnit *, std::set< pasched::schedule_dep::reg_t > > m_clobbered_regs;
 };
 
 class LLVMScheduleUnitBase : public pasched::schedule_unit
@@ -409,7 +410,11 @@ bool PaScheduleDAG::CheckPhysRegAndUpdate(
         std::set< pasched::schedule_dep::reg_t >& phys_regs,
         const std::map< SUnit *, const LLVMScheduleUnit * >& su_name_map)
 {
-    /* loop throught each register */
+    /* build a path map */
+    std::vector< std::vector< bool > > path;
+    std::map< const pasched::schedule_unit *, size_t > name_map;
+    dag.build_path_map(path, name_map);
+    /* loop through each register */
     std::set< pasched::schedule_dep::reg_t >::iterator rit;
     for(rit = phys_regs.begin(); rit != phys_regs.end(); ++rit)
     {
@@ -435,10 +440,6 @@ bool PaScheduleDAG::CheckPhysRegAndUpdate(
                 creators_phys_succs.push_back(list);
             }
         }
-        /* build a path map */
-        std::vector< std::vector< bool > > path;
-        std::map< const pasched::schedule_unit *, size_t > name_map;
-        dag.build_path_map(path, name_map);
         /* consider each pair of creators and build a list of conclits */
         std::vector< std::pair< size_t, size_t > > conflicts;
         for(size_t i = 0; i < creators.size(); i++)
@@ -501,13 +502,7 @@ bool PaScheduleDAG::CheckPhysRegAndUpdate(
         EVT vt = GetPhysicalRegisterVT(su_a->getNode(), reg);
         const TargetRegisterClass *rc = TRI->getMinimalPhysRegClass(reg, vt);
         const TargetRegisterClass *dest_rc = TRI->getCrossCopyRegClass(rc);
-        /* LLVM code says:
-         * If cross copy register class is null, then it must be possible copy
-         * the value directly.
-         *
-         * FIXME: cross copy class implementation is the same as LLVM and code suggest it
-         * is buggy (call NewSUnit with NULL param) so we must do as LLVM and duplicate the node
-         * :( */
+        /* FIXME: implement copy */
         if(dest_rc)
         {
             SUnit *new_def = CloneInstruction(su_a, tricky_units, su_name_map);
@@ -648,8 +643,9 @@ void PaScheduleDAG::Schedule()
     dag_accumulator after_unique_acc(false);
     pipeline.add_stage(new pasched::unique_reg_ids);
     pipeline.add_stage(&after_unique_acc);
-    pipeline.add_stage(new pasched::handle_physical_regs(true));
-    //pipeline.add_stage(&loop);
+    pipeline.add_stage(new pasched::handle_physical_regs);
+    if(dag.get_units().size() <= 100)
+        pipeline.add_stage(&loop);
     
     snd_stage_pipe.add_stage(new pasched::strip_dataless_units);
     snd_stage_pipe.add_stage(new pasched::strip_useless_order_deps);
@@ -668,7 +664,7 @@ void PaScheduleDAG::Schedule()
     pasched::glued_transformation_scheduler fallback_sched(&fallback_accum, &basic_sched, dummy_status);
     #if 0
     pasched::mris_ilp_scheduler sched(&fallback_sched, 10000, true);
-    #elif 0
+    #elif 1
     pasched::exp_scheduler sched(&fallback_sched, 10000, false);
     #elif 1
     pasched::simple_rp_scheduler sched;
@@ -707,7 +703,7 @@ void PaScheduleDAG::Schedule()
     assert(Sequence.size() + dead_nodes == SUnits.size() && "Invalid output schedule sequence size");
 
     /* output hard dag if any */
-    if(fallback_accum.get_dag().get_units().size() != 0)
+    if(fallback_accum.get_dag().get_units().size() != 0 && false)
     {
         srand(time(NULL));
         std::string str;

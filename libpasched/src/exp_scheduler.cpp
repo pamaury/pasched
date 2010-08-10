@@ -571,7 +571,7 @@ void exp_scheduler::schedule(schedule_dag& dag, schedule_chain& sc) const
 
         STM_STOP(exp_scheduler)
 
-        if(st.status == status_timeout)
+        if(st.status == status_timeout && false)
         {
             /* Okay, with have a schedule but because of the timeout, it might be of a bad quality,
             * so try to run the fallback scheduler and compare results */
