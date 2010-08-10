@@ -50,6 +50,11 @@ class schedule_dag
     virtual void remove_unit(const schedule_unit *unit) = 0;
     virtual void clear() = 0;
 
+    /** Modify properties of a dependency. You can't change the from/to properties
+     * but can change all others (kind, reg, ...)
+     * If several dependencies match the old one, only once is modified */
+    virtual void modify_dep(const schedule_dep& old, const schedule_dep& cur);
+
     /** Massive unit/dev add/removal */
     virtual void add_dependencies(const std::vector< schedule_dep >& deps);
     virtual void remove_dependencies(const std::vector< schedule_dep >& deps);
@@ -197,6 +202,7 @@ class generic_schedule_dag : public schedule_dag
     virtual void remove_dependency(schedule_dep d);
     virtual void add_unit(const schedule_unit *unit);
     virtual void remove_unit(const schedule_unit *unit);
+    virtual void modify_dep(const schedule_dep& old, const schedule_dep& cur);
 
     virtual bool is_consistent(std::string *out_msg = 0) const;
 

@@ -8,5 +8,6 @@
 #include "libpasched/ddl.hpp"
 #include "libpasched/lsd.hpp"
 #include "libpasched/sched-dag-viewer.hpp"
+#include "libpasched/adt.hpp"
 
 #endif // __PAMAURY_PASCHED_HPP__

@@ -64,6 +64,18 @@ void unordered_find_and_remove(const T& t, std::vector<T>& v, bool stop_on_first
         }
 }
 
+template<typename T>
+void unordered_find_and_modify(const T& t, const T& mod, std::vector<T>& v, bool stop_on_first = false)
+{
+    for(size_t i = 0; i < v.size(); ++i)
+        if(v[i] == t)
+        {
+            v[i] = mod;
+            if(stop_on_first)
+                break;
+        }
+}
+
 template<typename U, typename T>
 void unordered_find_and_remove(U uf, std::vector<T>& v, bool stop_on_first = false)
 {

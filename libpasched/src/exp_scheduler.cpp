@@ -1,6 +1,7 @@
 #include "scheduler.hpp"
 #include "sched-dag-viewer.hpp"
 #include "tools.hpp"
+#include "adt.hpp"
 #include <cstdlib>
 #include <cstdio>
 #include <stdexcept>
@@ -9,9 +10,6 @@
 #include <iostream>
 #include <cassert>
 #include <ctime>
-#define __STDC_LIMIT_MACROS
-#include <stdint.h>
-#include <string.h>
 
 namespace PAMAURY_SCHEDULER_NS
 {
@@ -29,100 +27,6 @@ exp_scheduler::~exp_scheduler()
 
 namespace
 {
-    struct bitmap
-    {
-        bitmap()
-        {
-        }
-        
-        bitmap(size_t nb_bits)
-        {
-            set_nb_bits(nb_bits);
-        }
-
-        void set_nb_bits(size_t nb_bits)
-        {
-            m_nb_bits = nb_bits;
-            m_nb_chunks = (nb_bits + BITS_PER_CHUNKS - 1) / BITS_PER_CHUNKS;
-            clear();
-        }
-
-        bool operator<(const bitmap& o) const
-        {
-            assert(o.m_nb_bits == m_nb_bits);
-
-            for(int i = m_nb_chunks - 1; i >= 0; i--)
-            {
-                if(m_chunks[i] < o.m_chunks[i])
-                    return true;
-                else if(m_chunks[i] > o.m_chunks[i])
-                    return false;
-            }
-
-            return false;
-        }
-
-        void set_bit(size_t b)
-        {
-            m_chunks[b / BITS_PER_CHUNKS] |= (uintmax_t)1 << (b % BITS_PER_CHUNKS);
-        }
-
-        void clear_bit(size_t b)
-        {
-            m_chunks[b / BITS_PER_CHUNKS] &= ~((uintmax_t)1 << (b % BITS_PER_CHUNKS));
-        }
-
-        void clear()
-        {
-            memset(m_chunks, 0, sizeof m_chunks);
-        }
-
-        static size_t nbs(uintmax_t n)
-        {
-            size_t cnt = 0;
-            while(n != 0)
-            {
-                cnt += n % 2;
-                n /= 2;
-            }
-            return cnt;
-        }
-
-        size_t nb_bits_set() const
-        {
-            size_t cnt = 0;
-            for(size_t i = 0; i < m_nb_chunks; i++)
-                cnt += nbs(m_chunks[i]);
-            return cnt;
-        }
-
-        size_t nb_bits_cleared() const
-        {
-            return m_nb_bits - nb_bits_set();
-        }
-
-        bool operator==(const bitmap& o) const
-        {
-            assert(o.m_nb_bits == m_nb_bits);
-            
-            for(size_t i = 0; i < m_nb_chunks; i++)
-                if(m_chunks[i] != o.m_chunks[i])
-                    return false;
-            return true;
-        }
-
-        bool operator!=(const bitmap& o) const
-        {
-            return !operator==(o);
-        }
-
-        static const size_t MAX_CHUNKS = 100; /* should not be a limit */
-        static const size_t BITS_PER_CHUNKS = sizeof(uintmax_t) * 8;
-        uintmax_t m_chunks[MAX_CHUNKS];
-        size_t m_nb_chunks;
-        size_t m_nb_bits;
-    };
-    
     typedef unsigned short unit_idx_t;
 
     struct exp_live_reg

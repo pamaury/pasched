@@ -2,9 +2,11 @@
 #include "sched-dag-viewer.hpp"
 #include "tools.hpp"
 #include "time-tools.hpp"
+#include "adt.hpp"
 #include <stdexcept>
 #include <queue>
 #include <iostream>
+#include <cassert>
 
 #ifdef ENABLE_DAG_AUTO_CHECK_CONSISTENCY
 #define AUTO_CHECK_CONSISTENCY
@@ -73,6 +75,13 @@ void schedule_dag::remove_units(const std::vector< const schedule_unit * >& unit
 {
     for(size_t i = 0; i < units.size(); i++)
         remove_unit(units[i]);
+}
+
+void schedule_dag::modify_dep(const schedule_dep& old, const schedule_dep& cur)
+{
+    /* trivial implementation; defeats the point of having a specialized function */
+    remove_dependency(old);
+    add_dependency(cur);
 }
 
 std::set< const schedule_unit * > schedule_dag::get_reachable(const schedule_unit *unit,
@@ -612,6 +621,10 @@ void schedule_dag::build_path_map(std::vector< std::vector< bool > >& path,
         compute_path_map(*this, path, name_map, reach, get_roots()[i]);
 
     MTM_STAT(TM_STOP(schedule_dag__build_path_map))
+    debug() << "schedule_dag__build_path_map: " <<
+        schedule_dag__build_path_map.get_timer().get_value() / (float)schedule_dag__build_path_map.get_timer().get_hz() << "\n";
+    debug() << "  #nodes: " << get_units().size() << "\n";
+    debug() << "  #edges: " << get_deps().size() << "\n";
 }
 
 /**
@@ -737,6 +750,21 @@ void generic_schedule_dag::remove_dependency(schedule_dep d)
 
     set_modified(true);
 
+    #ifdef AUTO_CHECK_CONSISTENCY
+    std::string s;
+    if(!is_consistent(&s))
+        throw std::runtime_error("DAG is not consistent after remove_dependency (" + s + ")");
+    #endif
+}
+
+void generic_schedule_dag::modify_dep(const schedule_dep& old, const schedule_dep& cur)
+{
+    assert(old.from() == cur.from() && old.to() == cur.to() && "You can't change from/to properties with modify_dep()");
+    
+    unordered_find_and_modify(old, cur, m_deps, true);
+    unordered_find_and_modify(old, cur, m_unit_map[old.from()].succs, true);
+    unordered_find_and_modify(old, cur, m_unit_map[cur.from()].succs, true);
+    
     #ifdef AUTO_CHECK_CONSISTENCY
     std::string s;
     if(!is_consistent(&s))

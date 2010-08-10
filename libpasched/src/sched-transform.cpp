@@ -841,6 +841,7 @@ void split_def_use_dom_use_deps::transform(schedule_dag& dag, const scheduler& s
     std::vector< chain_schedule_unit * > chains_added;
     
     status.begin_transformation();
+    debug() << "start\n";
 
     /* Each iteration might modify the graph */
     while(true)
@@ -1620,6 +1621,7 @@ void strip_dataless_units::transform(schedule_dag& dag, const scheduler& s, sche
 /**
  * handle_physical_regs
  */
+XTM_FW_DECLARE(handle_physical_regs)
 
 handle_physical_regs::handle_physical_regs(bool promote_phys_to_virt)
     : m_promote(promote_phys_to_virt)
@@ -1638,6 +1640,9 @@ void handle_physical_regs::transform(schedule_dag& dag, const scheduler& s, sche
     typedef std::map< schedule_dep::reg_t, std::set< const schedule_unit * > > reg_creator_list;
     bool modified = false;
     reg_problem_map problems;
+
+    debug() << "---> handle_physical_regs::transform\n";
+    XTM_FW_START(handle_physical_regs)
 
     /**
      * This transformation is organized as follow:
@@ -1735,7 +1740,7 @@ void handle_physical_regs::transform(schedule_dag& dag, const scheduler& s, sche
                             inter = true;
                         /* if there is a path from C to S, then it means that C has a partial order
                          * with S */
-                        if(path[name_map[creator]][name_map[use]])
+                        if(creator != use && path[name_map[creator]][name_map[use]])
                             partial = true;
                     }
                     /* we proved they do not interfere */
@@ -1833,6 +1838,7 @@ void handle_physical_regs::transform(schedule_dag& dag, const scheduler& s, sche
     }
     
     /* display */
+    /*
     debug() << "Problem list:\n";
     for(reg_problem_map::iterator it = problems.begin(); it != problems.end(); ++it)
     {
@@ -1845,6 +1851,7 @@ void handle_physical_regs::transform(schedule_dag& dag, const scheduler& s, sche
             debug() << "      " << l[i].second->to_string() << "\n";
         }
     }
+    */
     
     goto Lcont;
 
@@ -1864,10 +1871,12 @@ void handle_physical_regs::transform(schedule_dag& dag, const scheduler& s, sche
     status.set_junction(false);
     status.set_deadlock(false);
 
+    XTM_FW_STOP(handle_physical_regs)
     /* forward */
     s.schedule(dag, c);
 
     status.end_transformation();
+    debug() << "<--- handle_physical_regs::transform\n";
 }
 
 void handle_physical_regs::promote_phys_register(
@@ -1881,20 +1890,19 @@ void handle_physical_regs::promote_phys_register(
     std::vector< schedule_dep > to_remove;
     std::vector< schedule_dep > to_add;
     schedule_dep::reg_t id = dag.generate_unique_reg_id();
-
+    /* loop through all successors S */
     for(size_t i = 0; i < dag.get_succs(unit).size(); i++)
     {
         schedule_dep dep = dag.get_succs(unit)[i];
+        /* only consider phys reg deps on R */
         if(!dep.is_phys() || dep.reg() != reg)
             continue;
-        to_remove.push_back(dep);
+        /* change the kind from phys to virt */
         dep.set_kind(pasched::schedule_dep::virt_dep);
         dep.set_reg(id);
-        to_add.push_back(dep);
+        dag.modify_dep(dag.get_succs(unit)[i], dep);
     }
 
-    dag.remove_dependencies(to_remove);
-    dag.add_dependencies(to_add);
     modified = true;
 }
 

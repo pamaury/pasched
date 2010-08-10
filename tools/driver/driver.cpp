@@ -201,7 +201,7 @@ TM_DECLARE(dtm_total, "dtm-total")
 int __main(int argc, char **argv)
 {
     TM_START(dtm_total)
-    //pasched::set_debug(std::cout);
+    pasched::set_debug(std::cout);
     
     if(argc < 5)
     {
@@ -255,6 +255,9 @@ int __main(int argc, char **argv)
     }
     TM_STOP(dtm_read)
 
+    std::cout << "#nodes: " << dag.get_units().size() << "\n";
+    std::cout << "#deps: " << dag.get_deps().size() << "\n";
+
     pasched::transformation_pipeline pipeline;
     pasched::transformation_pipeline snd_stage_pipe;
     pasched::transformation_loop loop(&snd_stage_pipe);
@@ -280,9 +283,9 @@ int __main(int argc, char **argv)
     #if 0
     pasched::simple_rp_scheduler basic_sched;
     pasched::mris_ilp_scheduler sched(&basic_sched, 1000, true);
-    #elif 1
+    #elif 0
     pasched::simple_rp_scheduler basic_sched;
-    pasched::exp_scheduler sched(&basic_sched, 0000, false);
+    pasched::exp_scheduler sched(&basic_sched, 10000, false);
     #else
     pasched::simple_rp_scheduler sched;
     #endif
