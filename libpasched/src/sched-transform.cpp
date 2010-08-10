@@ -841,7 +841,6 @@ void split_def_use_dom_use_deps::transform(schedule_dag& dag, const scheduler& s
     std::vector< chain_schedule_unit * > chains_added;
     
     status.begin_transformation();
-    debug() << "start\n";
 
     /* Each iteration might modify the graph */
     while(true)

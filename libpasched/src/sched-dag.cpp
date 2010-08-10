@@ -574,25 +574,25 @@ namespace
         const schedule_dag& dag,
         std::vector< std::vector< bool > >& path,
         std::map< const schedule_unit *, size_t >& name_map,
-        std::map< const schedule_unit *, std::set< const schedule_unit * > >& reach,
+        std::map< const schedule_unit *, bitmap >& reach,
         const schedule_unit *unit)
     {
         if(reach.find(unit) != reach.end())
             return;
-        std::set< const schedule_unit * > set;
-        set.insert(unit);
+        bitmap set(dag.get_units().size());
+        set.set_bit(name_map[unit]);
 
         for(size_t i = 0; i < dag.get_succs(unit).size(); i++)
         {
             const schedule_unit *next = dag.get_succs(unit)[i].to();
             compute_path_map(dag, path, name_map, reach, next);
             
-            std::set< const schedule_unit * >& rset = reach[next];
-            set.insert(rset.begin(), rset.end());
+            bitmap& rset = reach[next];
+            set |= rset;
         }
 
-        for(std::set< const schedule_unit * >::iterator it = set.begin(); it != set.end(); ++it)
-            path[name_map[unit]][name_map[*it]] = true;
+        for(bitmap::const_bit_set_iterator it = set.bit_set_begin(); it != set.bit_set_end(); ++it)
+            path[name_map[unit]][*it] = true;
 
         reach[unit] = set;
     }
@@ -615,7 +615,7 @@ void schedule_dag::build_path_map(std::vector< std::vector< bool > >& path,
     }
 
     /* compute path map */
-    std::map< const schedule_unit *, std::set< const schedule_unit * > > reach;
+    std::map< const schedule_unit *, bitmap > reach;
 
     for(size_t i = 0; i < get_roots().size(); i++)
         compute_path_map(*this, path, name_map, reach, get_roots()[i]);
