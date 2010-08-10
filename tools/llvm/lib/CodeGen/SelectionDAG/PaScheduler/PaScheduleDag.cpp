@@ -65,7 +65,6 @@ private:
     bool ForceUnitLatencies() const { return true; }
 
     std::set< SUnit * > m_units_to_ignore;
-    std::map< SUnit *, std::set< pasched::schedule_dep::reg_t > > m_clobbered_regs;
 };
 
 class LLVMScheduleUnitBase : public pasched::schedule_unit
@@ -635,6 +634,8 @@ void PaScheduleDAG::Schedule()
         else
             break;
     }
+
+    
 
     /* build the transformation pipeline */
     pasched::transformation_pipeline pipeline;
