@@ -590,7 +590,8 @@ void exp_scheduler::schedule(schedule_dag& dag, schedule_chain& sc) const
             else
                 std::cout << "Exp (timeout) schedule is better: " << exp_rp << " vs " << alt_rp << "\n";
         }
-        
+
+        assert(gsc.check_against_dag(dag) && "Produced schedule is invalid");
         sc.insert_units_at(sc.get_unit_count(), gsc.get_units());
     }
     else

@@ -156,13 +156,27 @@ std::set< schedule_dep::reg_t > schedule_dag::get_reg_virt_create(
 }
 
 std::set< schedule_dep::reg_t > schedule_dag::get_reg_use(
-    const schedule_unit *unit) const
+    const schedule_unit *unit, bool pick_virt, bool pick_phys) const
 {
     std::set< schedule_dep::reg_t > s;
     for(size_t i = 0; i < get_preds(unit).size(); i++)
-        if(get_preds(unit)[i].is_data())
+        if(get_preds(unit)[i].is_phys() && pick_phys)
+            s.insert(get_preds(unit)[i].reg());
+        else if(get_preds(unit)[i].is_virt() && pick_virt)
             s.insert(get_preds(unit)[i].reg());
     return s;
+}
+
+std::set< schedule_dep::reg_t > schedule_dag::get_reg_phys_use(
+    const schedule_unit *unit) const
+{
+    return get_reg_use(unit, false, true);
+}
+
+std::set< schedule_dep::reg_t > schedule_dag::get_reg_virt_use(
+    const schedule_unit *unit) const
+{
+    return get_reg_use(unit, true, false);
 }
 
 std::set< schedule_dep::reg_t > schedule_dag::get_reg_destroy(
@@ -294,7 +308,7 @@ std::set< schedule_dep::reg_t > schedule_dag::get_reg_dont_destroy_exact(
 MTM_STAT(TM_DECLARE(schedule_dag__fuse_units, "mtm-fuse_units"))
 
 chain_schedule_unit *schedule_dag::fuse_units(const schedule_unit *a,
-        const schedule_unit *b, bool simulate_if_approx)
+        const schedule_unit *b, bool simulate_if_approx, bool allow_unsafe_phys_dep_hiding)
 {
     MTM_STAT(TM_START(schedule_dag__fuse_units))
     /* compute IRP */
@@ -306,6 +320,37 @@ chain_schedule_unit *schedule_dag::fuse_units(const schedule_unit *a,
     std::set< schedule_dep::reg_t > vu_min_vc_min_vdd = set_minus(set_minus(vu, vc), vdd);
     std::set< schedule_dep::reg_t > vu_plus_vc_min_vdd = set_minus(set_union(vu, vc), vdd);
     std::set< schedule_dep::reg_t > vc_min_vd = set_minus(vc, vd);
+
+    /* Check for phys deps hiding */
+    if(!allow_unsafe_phys_dep_hiding)
+    {
+        /* the B unit must be the only use of a physical register */
+        for(size_t i = 0; i < get_preds(b).size(); i++)
+        {
+            const schedule_dep& dep = get_preds(b)[i];
+            if(!dep.is_phys())
+                continue;
+            /* fast conclusion: if it's not destroyed, then it's safe */
+            if(vd.find(dep.reg()) == vd.end() || vdd.find(dep.reg()) != vdd.end())
+                continue;
+            /* slow conclusion */
+            bool ok = false;
+            for(size_t j = 0; j < get_succs(dep.from()).size(); j++)
+            {
+                const schedule_dep& dep2 = get_succs(dep.from())[j];
+                if(!dep2.is_phys() || dep2.reg() != dep.reg())
+                    continue;
+                if(dep2.to() != dep.to())
+                {
+                    ok = true;
+                    break;
+                }
+            }
+            /* not ok: prevent fusing */
+            if(!ok)
+                return 0;
+        }
+    }
 
     /**
      * The IRP of the new units has to take into account three points

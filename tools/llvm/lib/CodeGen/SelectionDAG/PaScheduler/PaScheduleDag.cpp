@@ -804,10 +804,11 @@ void PaScheduleDAG::Schedule()
     pasched::transformation_pipeline snd_stage_pipe;
     pasched::transformation_loop loop(&snd_stage_pipe);
     dag_accumulator after_unique_acc(false);
+    dag_accumulator before_schedule_acc(true);
     pipeline.add_stage(new pasched::unique_reg_ids);
     pipeline.add_stage(&after_unique_acc);
-    pipeline.add_stage(new pasched::handle_physical_regs);
     pipeline.add_stage(&loop);
+    pipeline.add_stage(&before_schedule_acc);
     
     snd_stage_pipe.add_stage(new pasched::strip_dataless_units);
     snd_stage_pipe.add_stage(new pasched::strip_useless_order_deps);
@@ -841,6 +842,8 @@ void PaScheduleDAG::Schedule()
     /* Check the schedule */
     if(!chain.check_against_dag(after_unique_acc.get_dag()))
     {
+        debug_view_dag(after_unique_acc.get_dag());
+        debug_view_dag(before_schedule_acc.get_dag());
         debug_view_scheduled_dag(after_unique_acc.get_dag(), chain);
         assert(false);
     }

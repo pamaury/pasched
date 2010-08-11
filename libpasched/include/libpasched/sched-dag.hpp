@@ -96,6 +96,10 @@ class schedule_dag
      * Compute the set of registers used by a schedule unit
      */
     virtual std::set< schedule_dep::reg_t > get_reg_use(
+        const schedule_unit *unit, bool pick_virt = true, bool pick_phys = true) const;
+    virtual std::set< schedule_dep::reg_t > get_reg_phys_use(
+        const schedule_unit *unit) const;
+    virtual std::set< schedule_dep::reg_t > get_reg_virt_use(
         const schedule_unit *unit) const;
     /**
      * Compute the set of registers used by a schedule unit and
@@ -139,7 +143,8 @@ class schedule_dag
      *       so you can produce illegal graphs with this !
      */
     virtual chain_schedule_unit *fuse_units(const schedule_unit *a,
-        const schedule_unit *b, bool simulate_if_approx = false);
+        const schedule_unit *b, bool simulate_if_approx = false,
+        bool allow_unsafe_phys_dep_hiding = false);
 
     /**
      * Duplicate a subgraph of the DAG given by a set of nodes.
