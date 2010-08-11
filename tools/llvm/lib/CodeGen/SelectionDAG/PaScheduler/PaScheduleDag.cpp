@@ -16,6 +16,7 @@
 #include <climits>
 #include <cstdio>
 #include <map>
+#include <sstream>
 #include <pasched.hpp>
 
 using namespace llvm;
@@ -96,7 +97,21 @@ class LLVMScheduleUnit : public LLVMScheduleUnitBase
 
     virtual std::string to_string() const
     {
-        return m_label;
+        if(!__cxx_debug_display_clobbered)
+            return m_label;
+        std::ostringstream oss;
+        oss << m_label << "\n";
+        oss << "{";
+        std::set< pasched::schedule_dep::reg_t >::const_iterator it;
+        for(it = m_clobber_regs.begin(); it != m_clobber_regs.end();)
+        {
+            oss << "p" << *it;
+            ++it;
+            if(it != m_clobber_regs.end())
+                oss << " ";
+        }
+        oss << "}";
+        return oss.str();
     }
 
     virtual const LLVMScheduleUnit *dup() const
@@ -121,7 +136,7 @@ class LLVMScheduleUnit : public LLVMScheduleUnitBase
         return m_SU;
     }
 
-    std::set< pasched::schedule_dep::reg_t > get_clobber_regs() const
+    const std::set< pasched::schedule_dep::reg_t >& get_clobber_regs() const
     {
         return m_clobber_regs;
     }
@@ -133,7 +148,10 @@ class LLVMScheduleUnit : public LLVMScheduleUnitBase
     SUnit *m_SU;
     std::string m_label;
     std::set< pasched::schedule_dep::reg_t > m_clobber_regs;
+    static bool __cxx_debug_display_clobbered; /* for use with a debugger */
 };
+
+bool LLVMScheduleUnit::__cxx_debug_display_clobbered = false;
 
 /* Fake unit to capture clobbered register */
 class LLVMClobberRegCapture : public LLVMScheduleUnitBase
@@ -447,7 +465,7 @@ bool PaScheduleDAG::HandlePhysRangeUnitConflicts(
         pasched::schedule_dep::reg_t reg = *rit;
         /* make a list of creators */
         std::vector< const pasched::schedule_unit * > creators;
-        /* list of phys regs succ dep on R for each creator */
+        /* make list of phys regs succ dep on R for each creator */
         std::vector< std::vector< const pasched::schedule_unit * > > creators_phys_succs;
         for(size_t i = 0; i < dag.get_units().size(); i++)
         {
@@ -466,6 +484,89 @@ bool PaScheduleDAG::HandlePhysRangeUnitConflicts(
                 creators_phys_succs.push_back(list);
             }
         }
+        /* There is a special and important case when one the user already clobber the register,
+         * this might happen with the CMOV_GR8 instruction on X86 which conservatively reports
+         * itself as destroying the flags but also as using them.
+         * There are basically two cases:
+         * - either one one user destroys the flags and we add dependencies from the other uses to this one
+         * - there are two or more and we clone instructions
+         */
+        for(size_t i = 0; i < creators.size(); i++)
+        {
+            const pasched::schedule_unit *creator = creators[i];
+            const LLVMScheduleUnitBase *base = static_cast< const LLVMScheduleUnitBase * >(creator);
+            assert(base->is_llvm_unit() && "all units must be of kind LLVMScheduleUnit at this point too");
+            const LLVMScheduleUnit *uu = static_cast< const LLVMScheduleUnit * >(base);
+            SUnit *su_creator = uu->GetSU();
+                
+            std::vector< const pasched::schedule_unit * > use_that_clobber;
+            std::vector< const pasched::schedule_unit * > use_that_dont_clobber;
+            
+            for(size_t j = 0; j < creators_phys_succs[i].size(); j++)
+            {
+                const pasched::schedule_unit *use = creators_phys_succs[i][j];
+                base = static_cast< const LLVMScheduleUnitBase * >(use);
+                assert(base->is_llvm_unit() && "all units must be of kind LLVMScheduleUnit at this point too");
+                uu = static_cast< const LLVMScheduleUnit * >(base);
+
+                const std::set< pasched::schedule_dep::reg_t >& clobber = uu->get_clobber_regs();
+                if(clobber.find(reg) == clobber.end())
+                    use_that_dont_clobber.push_back(use);
+                else
+                    use_that_clobber.push_back(use);
+            }
+
+            /* no problem ? */
+            if(use_that_clobber.empty())
+                continue;
+            /* small problem ? */
+            if(use_that_clobber.size() == 1)
+            {
+                /* see if we can add some dependencies from other uses to this one */
+                std::set< const pasched::schedule_unit * >tricky_units;
+                for(size_t i = 0; i < use_that_dont_clobber.size(); i++)
+                {
+                    if(path[path_name_map[use_that_clobber[0]]][path_name_map[use_that_dont_clobber[i]]])
+                        tricky_units.insert(use_that_dont_clobber[i]);
+                }
+                /* real problem ? */
+                if(!tricky_units.empty())
+                {
+                    /* clone */
+                    assert(CloneInstruction(su_creator, tricky_units, su_name_map) && "can't clone");
+                    /* return now, there is probably more work to do */
+                    return true;
+                }
+                /* no, cool, just add some dependencies */
+                base = static_cast< const LLVMScheduleUnitBase * >(use_that_clobber[0]);
+                assert(base->is_llvm_unit() && "all units must be of kind LLVMScheduleUnit at this point too");
+                uu = static_cast< const LLVMScheduleUnit * >(base);
+                SUnit *su_clobber = uu->GetSU();
+                
+                for(size_t i = 0; i < use_that_dont_clobber.size(); i++)
+                {
+                    if(!path[path_name_map[use_that_dont_clobber[i]]][path_name_map[use_that_clobber[0]]])
+                    {
+                        base = static_cast< const LLVMScheduleUnitBase * >(use_that_dont_clobber[i]);
+                        assert(base->is_llvm_unit() && "all units must be of kind LLVMScheduleUnit at this point too");
+                        uu = static_cast< const LLVMScheduleUnit * >(base);
+                        SUnit *su_use = uu->GetSU();
+                        su_clobber->addPred(SDep(su_use, SDep::Order));
+                        /* graph modified */
+                        graph_modified = true;
+                    }
+                }
+                
+            }
+            /* big problem ? */
+            else
+            {
+                assert(false);
+            }
+        }
+        /* if the graph was modified so far, stop here */
+        if(graph_modified)
+            return true;
         /* consider each creator and see if there a unit with implicit defs
          * which is clobbering this register in a way that it makes it unschedulable.
          * Also compute the converse, that is, if we are sure this unit does not
@@ -505,11 +606,8 @@ bool PaScheduleDAG::HandlePhysRangeUnitConflicts(
                     const LLVMScheduleUnit *uu = static_cast< const LLVMScheduleUnit * >(base);
                     SUnit *su_creator = uu->GetSU();
                     
-                    SUnit *new_def = CloneInstruction(su_creator, path_clobber_use, su_name_map);
-                    if(new_def)
-                        return true;
-                    assert(false && "cannot clone unfold memory operand or clone unit, cross class copy is not implemented");
-                    return false;
+                    assert(CloneInstruction(su_creator, path_clobber_use, su_name_map) && "can't clone");
+                    return true;
                 }
                 /* if there is a partial order (clobber->use or creator->clobber) then we enforce
                  * it complete to avoid generating clobber capture units */
@@ -743,6 +841,8 @@ void PaScheduleDAG::BuildPaSchedGraph(pasched::schedule_dag& dag)
         unsafe_clobbering.clear();
         /* build the simple underlying graph */
         BuildIncompletePaSchedGraph(dag, map, phys_deps);
+        if(!dag.is_consistent())
+            assert(false);
         /* build a path map */
         dag.build_path_map(path, name_map);
         /* look for conflicting physical registers ranges */
