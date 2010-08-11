@@ -422,6 +422,7 @@ bool PaScheduleDAG::HandlePhysRangeUnitConflicts(
         std::vector< std::vector< bool > >& path,
         std::map< const pasched::schedule_unit *, size_t >& path_name_map)
 {
+    bool graph_modified = false;
     /* build a map of clobbering units */
     std::map< pasched::schedule_dep::reg_t, std::vector< const pasched::schedule_unit * > > clobbering_map;
     
@@ -482,42 +483,84 @@ bool PaScheduleDAG::HandlePhysRangeUnitConflicts(
                     continue; /* not problem */
                 /* other way around ? */
                 bool path_create_clobber = path[path_name_map[creator]][path_name_map[clobber[j]]];
-                std::set< const pasched::schedule_unit * > conflicting_units;
-                bool incomplete_path_use_clobber = false;
+                std::set< const pasched::schedule_unit * > path_clobber_use;
+                std::set< const pasched::schedule_unit * > no_path_use_clobber;
                 /* consider each use */
                 for(size_t k = 0; k < creators_phys_succs[i].size(); k++)
                 {
                     const pasched::schedule_unit *use = creators_phys_succs[i][k];
-                    /* conflict ? */
-                    if(path_create_clobber && clobber[j] != use &&
+                    /*  */
+                    if(clobber[j] != use &&
                             path[path_name_map[clobber[j]]][path_name_map[use]])
-                        conflicting_units.insert(use);
+                        path_clobber_use.insert(use);
                     /* incomplete order ? */
                     if(!path[path_name_map[use]][path_name_map[clobber[j]]])
-                        incomplete_path_use_clobber = true;
+                        no_path_use_clobber.insert(use);
                 }
                 /* if there is a conflict, handle it by cloning unit */
-                if(!conflicting_units.empty())
+                if(path_create_clobber && !path_clobber_use.empty())
                 {
                     const LLVMScheduleUnitBase *base = static_cast< const LLVMScheduleUnitBase * >(creator);
                     assert(base->is_llvm_unit() && "all units must be of kind LLVMScheduleUnit at this point too");
                     const LLVMScheduleUnit *uu = static_cast< const LLVMScheduleUnit * >(base);
                     SUnit *su_creator = uu->GetSU();
                     
-                    SUnit *new_def = CloneInstruction(su_creator, conflicting_units, su_name_map);
+                    SUnit *new_def = CloneInstruction(su_creator, path_clobber_use, su_name_map);
                     if(new_def)
                         return true;
                     assert(false && "cannot clone unfold memory operand or clone unit, cross class copy is not implemented");
                     return false;
                 }
+                /* if there is a partial order (clobber->use or creator->clobber) then we enforce
+                 * it complete to avoid generating clobber capture units */
+                else if(!path_create_clobber && !path_clobber_use.empty())
+                {
+                    graph_modified = true;
+                    /* there is no path from clobber to creator but there is from clobber to use
+                     * so in fact the clobbering unit must be executed before the creator (and
+                     * can be because there is no conflict) so we add a dependency */
+                    const LLVMScheduleUnitBase *base = static_cast< const LLVMScheduleUnitBase * >(creator);
+                    assert(base->is_llvm_unit() && "all units must be of kind LLVMScheduleUnit at this point");
+                    const LLVMScheduleUnit *uu = static_cast< const LLVMScheduleUnit * >(base);
+                    SUnit *su_creator = uu->GetSU();
+
+                    base = static_cast< const LLVMScheduleUnitBase * >(clobber[j]);
+                    assert(base->is_llvm_unit() && "all units must be of kind LLVMScheduleUnit at this point");
+                    uu = static_cast< const LLVMScheduleUnit * >(base);
+                    SUnit *su_clobber = uu->GetSU();
+                    /* add dependency from clobbering unit to creator */
+                    su_creator->addPred(SDep(su_clobber, SDep::Order));
+                }
+                else if(path_create_clobber && !no_path_use_clobber.empty())
+                {
+                    graph_modified = true;
+                    /* there a path from creator to clobbering but there is at least
+                     * one use doesn't no have a path to the clobbering unit. But it
+                     * must be executed before so force an order by adding dependencies */
+                    const LLVMScheduleUnitBase *base = static_cast< const LLVMScheduleUnitBase * >(clobber[j]);
+                    assert(base->is_llvm_unit() && "all units must be of kind LLVMScheduleUnit at this point");
+                    const LLVMScheduleUnit *uu = static_cast< const LLVMScheduleUnit * >(base);
+                    SUnit *su_clobber = uu->GetSU();
+                    
+                    std::set< const pasched::schedule_unit * >::iterator it;
+                    for(it = no_path_use_clobber.begin(); it != no_path_use_clobber.end(); ++it)
+                    {
+                        base = static_cast< const LLVMScheduleUnitBase * >(*it);
+                        assert(base->is_llvm_unit() && "all units must be of kind LLVMScheduleUnit at this point");
+                        uu = static_cast< const LLVMScheduleUnit * >(base);
+                        SUnit *su_use = uu->GetSU();
+                        /* add dependency from use to clobbering unit */
+                        su_clobber->addPred(SDep(su_use, SDep::Order));
+                    }
+                }
                 /* if there is an incomplete order, then the clobbering is unsafe */
-                if(incomplete_path_use_clobber)
+                else if(!no_path_use_clobber.empty())
                     unsafe_clobbering.insert(std::make_pair(clobber[j], reg));
             }
         }
     }
 
-    return false;
+    return graph_modified;
 }
 
 bool PaScheduleDAG::HandlePhysRangeRangeConflicts(
@@ -822,7 +865,7 @@ void PaScheduleDAG::Schedule()
     assert(Sequence.size() + dead_nodes == SUnits.size() && "Invalid output schedule sequence size");
 
     /* output hard dag if any */
-    if(after_unique_acc.get_dag().get_units().size() > 100)
+    if(after_unique_acc.get_dag().get_units().size() > 100 && false)
     {
         srand(time(NULL));
         std::string str;
