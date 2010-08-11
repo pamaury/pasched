@@ -48,19 +48,29 @@ public:
 private:
 
     std::set< pasched::schedule_dep::reg_t > ComputeClobberRegs(SUnit *SU);
-    bool CheckPhysRegAndUpdate(
+    bool HandlePhysRangeRangeConflicts(
         const pasched::schedule_dag& dag,
         std::set< pasched::schedule_dep::reg_t >& phys_regs,
-        const std::map< SUnit *, const LLVMScheduleUnit * >& name_map);
+        std::map< SUnit *, const LLVMScheduleUnit * >& su_name_map,
+        std::vector< std::vector< bool > >& path,
+        std::map< const pasched::schedule_unit *, size_t >& path_name_map);
+    bool HandlePhysRangeUnitConflicts(
+        const pasched::schedule_dag& dag,
+        std::set< pasched::schedule_dep::reg_t >& phys_regs,
+        std::map< SUnit *, const LLVMScheduleUnit * >& su_name_map,
+        std::set< std::pair< const pasched::schedule_unit *, pasched::schedule_dep::reg_t > >& unsafe_clobbering,
+        std::vector< std::vector< bool > >& path,
+        std::map< const pasched::schedule_unit *, size_t >& path_name_map);
     EVT GetPhysicalRegisterVT(SDNode *N, unsigned Reg) const;
     SUnit *CloneInstruction(
         SUnit *su,
         const std::set< const pasched::schedule_unit * >& succs_to_fix,
-        const std::map< SUnit *, const LLVMScheduleUnit * >& su_name_map);
-    void BuildPaSchedGraph(
+        std::map< SUnit *, const LLVMScheduleUnit * >& su_name_map);
+    void BuildIncompletePaSchedGraph(
         pasched::schedule_dag& dag,
         std::map< SUnit *, const LLVMScheduleUnit * >& map,
         std::set< pasched::schedule_dep::reg_t >& phys_deps);
+    void BuildPaSchedGraph(pasched::schedule_dag& dag);
     
     bool ForceUnitLatencies() const { return true; }
 
@@ -228,7 +238,7 @@ EVT PaScheduleDAG::GetPhysicalRegisterVT(SDNode *N, unsigned Reg) const
 SUnit *PaScheduleDAG::CloneInstruction(
     SUnit *su,
     const std::set< const pasched::schedule_unit * >& succs_to_fix,
-    const std::map< SUnit *, const LLVMScheduleUnit * >& su_name_map)
+    std::map< SUnit *, const LLVMScheduleUnit * >& su_name_map)
 {
     if(su->getNode()->getFlaggedNode())
         return NULL;
@@ -404,15 +414,119 @@ SUnit *PaScheduleDAG::CloneInstruction(
     return new_su;
 }
 
-bool PaScheduleDAG::CheckPhysRegAndUpdate(
+bool PaScheduleDAG::HandlePhysRangeUnitConflicts(
         const pasched::schedule_dag& dag,
         std::set< pasched::schedule_dep::reg_t >& phys_regs,
-        const std::map< SUnit *, const LLVMScheduleUnit * >& su_name_map)
+        std::map< SUnit *, const LLVMScheduleUnit * >& su_name_map,
+        std::set< std::pair< const pasched::schedule_unit *, pasched::schedule_dep::reg_t > >& unsafe_clobbering,
+        std::vector< std::vector< bool > >& path,
+        std::map< const pasched::schedule_unit *, size_t >& path_name_map)
 {
-    /* build a path map */
-    std::vector< std::vector< bool > > path;
-    std::map< const pasched::schedule_unit *, size_t > name_map;
-    dag.build_path_map(path, name_map);
+    /* build a map of clobbering units */
+    std::map< pasched::schedule_dep::reg_t, std::vector< const pasched::schedule_unit * > > clobbering_map;
+    
+    for(size_t i = 0; i < dag.get_units().size(); i++)
+    {
+        const pasched::schedule_unit *unit = dag.get_units()[i];
+        const LLVMScheduleUnitBase *base = static_cast< const LLVMScheduleUnitBase * >(unit);
+        assert(base->is_llvm_unit() && "all units must be of kind LLVMScheduleUnit at this point");
+        const LLVMScheduleUnit *uu = static_cast< const LLVMScheduleUnit * >(base);
+
+        std::set< pasched::schedule_dep::reg_t > regs = uu->get_clobber_regs();
+        std::set< pasched::schedule_dep::reg_t >::iterator it;
+        for(it = regs.begin(); it != regs.end(); ++it)
+            /* only consider phys regs in dependencies */
+            if(phys_regs.find(*it) != phys_regs.end())
+                clobbering_map[*it].push_back(unit);
+    }
+    /* loop through each register */
+    std::set< pasched::schedule_dep::reg_t >::iterator rit;
+    for(rit = phys_regs.begin(); rit != phys_regs.end(); ++rit)
+    {
+        pasched::schedule_dep::reg_t reg = *rit;
+        /* make a list of creators */
+        std::vector< const pasched::schedule_unit * > creators;
+        /* list of phys regs succ dep on R for each creator */
+        std::vector< std::vector< const pasched::schedule_unit * > > creators_phys_succs;
+        for(size_t i = 0; i < dag.get_units().size(); i++)
+        {
+            const pasched::schedule_unit *unit = dag.get_units()[i];
+            std::set< pasched::schedule_dep::reg_t > set = dag.get_reg_phys_create(unit);
+            if(set.find(reg) != set.end())
+            {
+                creators.push_back(unit);
+                std::vector< const pasched::schedule_unit * > list;
+                for(size_t j = 0; j < dag.get_succs(unit).size(); j++)
+                {
+                    const pasched::schedule_dep& dep = dag.get_succs(unit)[j];
+                    if(dep.is_phys() && dep.reg() == reg)
+                        list.push_back(dep.to());
+                }
+                creators_phys_succs.push_back(list);
+            }
+        }
+        /* consider each creator and see if there a unit with implicit defs
+         * which is clobbering this register in a way that it makes it unschedulable.
+         * Also compute the converse, that is, if we are sure this unit does not
+         * interfere with any range */
+        const std::vector< const pasched::schedule_unit * >& clobber = clobbering_map[reg];
+        
+        for(size_t i = 0; i < creators.size(); i++)
+        {
+            const pasched::schedule_unit *creator = creators[i];
+            /* consider each clobbering unit */
+            for(size_t j = 0; j < clobber.size(); j++)
+            {
+                /* fast decision ? */
+                if(path[path_name_map[clobber[j]]][path_name_map[creator]])
+                    continue; /* not problem */
+                /* other way around ? */
+                bool path_create_clobber = path[path_name_map[creator]][path_name_map[clobber[j]]];
+                std::set< const pasched::schedule_unit * > conflicting_units;
+                bool incomplete_path_use_clobber = false;
+                /* consider each use */
+                for(size_t k = 0; k < creators_phys_succs[i].size(); k++)
+                {
+                    const pasched::schedule_unit *use = creators_phys_succs[i][k];
+                    /* conflict ? */
+                    if(path_create_clobber && clobber[j] != use &&
+                            path[path_name_map[clobber[j]]][path_name_map[use]])
+                        conflicting_units.insert(use);
+                    /* incomplete order ? */
+                    if(!path[path_name_map[use]][path_name_map[clobber[j]]])
+                        incomplete_path_use_clobber = true;
+                }
+                /* if there is a conflict, handle it by cloning unit */
+                if(!conflicting_units.empty())
+                {
+                    const LLVMScheduleUnitBase *base = static_cast< const LLVMScheduleUnitBase * >(creator);
+                    assert(base->is_llvm_unit() && "all units must be of kind LLVMScheduleUnit at this point too");
+                    const LLVMScheduleUnit *uu = static_cast< const LLVMScheduleUnit * >(base);
+                    SUnit *su_creator = uu->GetSU();
+                    
+                    SUnit *new_def = CloneInstruction(su_creator, conflicting_units, su_name_map);
+                    if(new_def)
+                        return true;
+                    assert(false && "cannot clone unfold memory operand or clone unit, cross class copy is not implemented");
+                    return false;
+                }
+                /* if there is an incomplete order, then the clobbering is unsafe */
+                if(incomplete_path_use_clobber)
+                    unsafe_clobbering.insert(std::make_pair(clobber[j], reg));
+            }
+        }
+    }
+
+    return false;
+}
+
+bool PaScheduleDAG::HandlePhysRangeRangeConflicts(
+        const pasched::schedule_dag& dag,
+        std::set< pasched::schedule_dep::reg_t >& phys_regs,
+        std::map< SUnit *, const LLVMScheduleUnit * >& su_name_map,
+        std::vector< std::vector< bool > >& path,
+        std::map< const pasched::schedule_unit *, size_t >& path_name_map)
+{
     /* loop through each register */
     std::set< pasched::schedule_dep::reg_t >::iterator rit;
     for(rit = phys_regs.begin(); rit != phys_regs.end(); ++rit)
@@ -457,13 +571,13 @@ bool PaScheduleDAG::CheckPhysRegAndUpdate(
                 for(size_t k = 0; k < creators_phys_succs[j].size(); k++)
                 {
                     const pasched::schedule_unit *succ = creators_phys_succs[j][k];
-                    if(succ != creators[i] && path[name_map[creators[i]]][name_map[succ]])
+                    if(succ != creators[i] && path[path_name_map[creators[i]]][path_name_map[succ]])
                         partial_i_j = true;
                 }
                 for(size_t k = 0; k < creators_phys_succs[i].size(); k++)
                 {
                     const pasched::schedule_unit *succ = creators_phys_succs[i][k];
-                    if(succ != creators[j] && path[name_map[creators[j]]][name_map[succ]])
+                    if(succ != creators[j] && path[path_name_map[creators[j]]][path_name_map[succ]])
                         partial_j_i = true;
                 }
                 
@@ -479,7 +593,7 @@ bool PaScheduleDAG::CheckPhysRegAndUpdate(
         /* we want to simulate a schedule so we need to virtually schedule either A
          * or B. It might be that only one order is possible if there is path between
          * A and B or between B and A, check that and make sure A is schedulable first */
-        if(path[name_map[b]][name_map[a]])
+        if(path[path_name_map[b]][path_name_map[a]])
             /* path between B and A: swap them */
             std::swap(a, b);
         /* virtually schedule all successors that depend on the phys R and that
@@ -490,7 +604,7 @@ bool PaScheduleDAG::CheckPhysRegAndUpdate(
             const pasched::schedule_dep& dep = dag.get_succs(a)[i];
             if(!dep.is_phys() || dep.reg() != reg)
                 continue;
-            if(!path[name_map[b]][name_map[dep.to()]])
+            if(!path[path_name_map[b]][path_name_map[dep.to()]])
                 continue;
             tricky_units.insert(dep.to());
         }
@@ -515,7 +629,7 @@ bool PaScheduleDAG::CheckPhysRegAndUpdate(
     return false;
 }
 
-void PaScheduleDAG::BuildPaSchedGraph(
+void PaScheduleDAG::BuildIncompletePaSchedGraph(
     pasched::schedule_dag& dag,
     std::map< SUnit *, const LLVMScheduleUnit * >& map,
     std::set< pasched::schedule_dep::reg_t >& phys_deps)
@@ -569,38 +683,60 @@ void PaScheduleDAG::BuildPaSchedGraph(
             dag.add_dependency(dep);
         }
     }
-    /* Add clobbered */
-    for(size_t u = 0; u < SUnits.size(); u++)
+}
+
+void PaScheduleDAG::BuildPaSchedGraph(pasched::schedule_dag& dag)
+{
+    m_units_to_ignore.clear();
+    std::set< std::pair< const pasched::schedule_unit *, pasched::schedule_dep::reg_t > > unsafe_clobbering;
+    
+    while(true)
     {
-        SUnit& unit = SUnits[u];
-        if(m_units_to_ignore.find(&unit) != m_units_to_ignore.end())
-            continue;
-        /* Clobbered registers */
-        std::set< pasched::schedule_dep::reg_t > create = dag.get_reg_phys_create(map[&unit]);
-        std::set< pasched::schedule_dep::reg_t > clob = map[&unit]->get_clobber_regs();
-        LLVMClobberRegCapture *capture = 0;
-        for(std::set< pasched::schedule_dep::reg_t >::iterator it = clob.begin(); it != clob.end(); ++it)
+        std::map< SUnit *, const LLVMScheduleUnit * > map;
+        std::set< pasched::schedule_dep::reg_t > phys_deps; /* list of phys reg in deps */
+        std::vector< std::vector< bool > > path;
+        std::map< const pasched::schedule_unit *, size_t > name_map;
+        /* cleaning */
+        unsafe_clobbering.clear();
+        /* build the simple underlying graph */
+        BuildIncompletePaSchedGraph(dag, map, phys_deps);
+        /* build a path map */
+        dag.build_path_map(path, name_map);
+        /* look for conflicting physical registers ranges */
+        if(HandlePhysRangeRangeConflicts(dag, phys_deps, map, path, name_map))
         {
-            /* if the clobbered register is not in the create list, then route a dep to
-             * clobber capture unit */
-            if(create.find(*it) != create.end())
-                continue;
-            /* don't add it if does not clobber a register actually in a phys dep */
-            if(phys_deps.find(*it) == phys_deps.end())
-                continue;
-            
-            if(capture == 0)
-            {
-                capture = new LLVMClobberRegCapture;
-                dag.add_unit(capture);
-            }
-            assert(capture != 0 && "no clobber capture node\n");
-            dag.add_dependency(
-                pasched::schedule_dep(
-                    map[&unit],
-                    capture,
-                    pasched::schedule_dep::phys_dep, *it));
+            for(size_t i = 0; i < dag.get_units().size(); i++)
+                delete dag.get_units()[i];
         }
+        /* look for conflicting physical registers range and unit */
+        else if(HandlePhysRangeUnitConflicts(dag, phys_deps, map, unsafe_clobbering, path, name_map))
+        {
+            for(size_t i = 0; i < dag.get_units().size(); i++)
+                delete dag.get_units()[i];
+        }
+        else
+            break;
+    }
+    /* add clobbering units to the graph */
+    std::map< const pasched::schedule_unit *, const pasched::schedule_unit * > clobber_capture_map;
+
+    std::set< std::pair< const pasched::schedule_unit *, pasched::schedule_dep::reg_t > >::iterator it;
+    for(it = unsafe_clobbering.begin(); it != unsafe_clobbering.end(); ++it)
+    {
+        const pasched::schedule_unit *unit = it->first;
+        pasched::schedule_dep::reg_t reg = it->second;
+
+        if(clobber_capture_map.find(unit) == clobber_capture_map.end())
+        {
+             const pasched::schedule_unit *cap = new LLVMClobberRegCapture;
+             dag.add_unit(cap);
+             clobber_capture_map[unit] = cap;
+        }
+        /* add a dependency between unit and clobber capture node */
+        const pasched::schedule_unit *clobber =  clobber_capture_map[unit];
+        dag.add_dependency(
+            pasched::schedule_dep(
+                unit, clobber, pasched::schedule_dep::phys_dep, reg));
     }
 }
 
@@ -611,8 +747,6 @@ void PaScheduleDAG::Schedule()
     
     //dbgs() << "********** PaScheduleDAG **********\n";
 
-    std::map< SUnit *, const LLVMScheduleUnit * > map; 
-
     /* allocate schedule units build a map of them */
     pasched::generic_schedule_dag dag;
 
@@ -620,22 +754,7 @@ void PaScheduleDAG::Schedule()
     assert(ExitSU.Preds.size() == 0 && "not handled yet");
     /* iterate as long as the current phys reg layout prevents a valid scheduling
      * and solve them with duplication or cross class copies */
-    m_units_to_ignore.clear();
-    while(true)
-    {
-        std::set< pasched::schedule_dep::reg_t > phys_deps; /* list of phys reg in deps */
-        BuildPaSchedGraph(dag, map, phys_deps);
-        /* check if it schedulable and adds instructions if not */
-        if(CheckPhysRegAndUpdate(dag, phys_deps, map))
-        {
-            for(size_t i = 0; i < dag.get_units().size(); i++)
-                delete dag.get_units()[i];
-        }
-        else
-            break;
-    }
-
-    
+    BuildPaSchedGraph(dag);
 
     /* build the transformation pipeline */
     pasched::transformation_pipeline pipeline;
@@ -645,8 +764,7 @@ void PaScheduleDAG::Schedule()
     pipeline.add_stage(new pasched::unique_reg_ids);
     pipeline.add_stage(&after_unique_acc);
     pipeline.add_stage(new pasched::handle_physical_regs);
-    if(dag.get_units().size() <= 100)
-        pipeline.add_stage(&loop);
+    pipeline.add_stage(&loop);
     
     snd_stage_pipe.add_stage(new pasched::strip_dataless_units);
     snd_stage_pipe.add_stage(new pasched::strip_useless_order_deps);
@@ -704,7 +822,7 @@ void PaScheduleDAG::Schedule()
     assert(Sequence.size() + dead_nodes == SUnits.size() && "Invalid output schedule sequence size");
 
     /* output hard dag if any */
-    if(fallback_accum.get_dag().get_units().size() != 0 && false)
+    if(after_unique_acc.get_dag().get_units().size() > 100)
     {
         srand(time(NULL));
         std::string str;

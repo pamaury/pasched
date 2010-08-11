@@ -1,6 +1,7 @@
 #ifndef __PAMAURY_SCHED_DAG_VIEWER_HPP__
 #define __PAMAURY_SCHED_DAG_VIEWER_HPP__
 
+#include "config.hpp"
 #include "sched-dag.hpp"
 #include "sched-chain.hpp"
 
