@@ -324,32 +324,12 @@ chain_schedule_unit *schedule_dag::fuse_units(const schedule_unit *a,
     /* Check for phys deps hiding */
     if(!allow_unsafe_phys_dep_hiding)
     {
-        /* the B unit must be the only use of a physical register */
-        for(size_t i = 0; i < get_preds(b).size(); i++)
-        {
-            const schedule_dep& dep = get_preds(b)[i];
-            if(!dep.is_phys())
-                continue;
-            /* fast conclusion: if it's not destroyed, then it's safe */
-            if(vd.find(dep.reg()) == vd.end() || vdd.find(dep.reg()) != vdd.end())
-                continue;
-            /* slow conclusion */
-            bool ok = false;
-            for(size_t j = 0; j < get_succs(dep.from()).size(); j++)
-            {
-                const schedule_dep& dep2 = get_succs(dep.from())[j];
-                if(!dep2.is_phys() || dep2.reg() != dep.reg())
-                    continue;
-                if(dep2.to() != dep.to())
-                {
-                    ok = true;
-                    break;
-                }
-            }
-            /* not ok: prevent fusing */
-            if(!ok)
-                return 0;
-        }
+        /* the A or B unit must not use any physical register */
+        if(!get_reg_phys_use(b).empty() ||
+                !get_reg_phys_use(a).empty() ||
+                !get_reg_phys_create(a).empty() ||
+                !get_reg_phys_create(b).empty())
+            return 0;
     }
 
     /**
@@ -479,7 +459,7 @@ chain_schedule_unit *schedule_dag::fuse_units(const schedule_unit *a,
     remove_unit(a);
     remove_unit(b);
     add_dependencies(to_add);
-
+    
     /* remove redundant data deps */
     remove_redundant_data_dep_preds(c);
 
@@ -571,7 +551,19 @@ void schedule_dag::remove_redundant_data_dep_preds(const schedule_unit *unit)
             if(dep.reg() != dep2.reg())
                 continue;
             if(dep.from() != dep2.from())
+            {
+                std::vector< dag_printer_opt > opts;
+                dag_printer_opt o;
+                o.type = dag_printer_opt::po_color_dep;
+                o.color_dep.match_all = false;
+                o.color_dep.dep = dep;
+                o.color_dep.color = "green";
+                opts.push_back(o);
+                o.color_dep.dep = dep2;
+                opts.push_back(o);
+                debug_view_dag(*this, opts);
                 throw std::runtime_error("schedule_dep::remove_redundant_data_dep_preds detected several creators for the same register");
+            }
             to_remove.push_back(dep2);
             /* stop now because otherwise, we will remove some twice or more ! */
             break;
