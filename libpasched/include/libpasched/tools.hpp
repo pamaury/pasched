@@ -122,6 +122,16 @@ std::set< T > set_union(const std::set< T >& a, const std::set< T >& b)
 }
 
 template<typename T>
+std::set< T > set_inter(const std::set< T >& a, const std::set< T >& b)
+{
+    std::set< T > c;
+    for(typename std::set< T >::const_iterator it = a.begin(); it != a.end(); ++it)
+        if(b.find(*it) != b.end())
+            c.insert(*it);
+    return c;
+}
+
+template<typename T>
 std::vector< T > set_to_vector(const std::set< T >& s)
 {
     std::vector< T > v;
