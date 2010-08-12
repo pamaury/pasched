@@ -582,6 +582,10 @@ void smart_fuse_two_units::transform(schedule_dag& dag, const scheduler& s, sche
 
     status.begin_transformation();
     XTM_FW_START(smart_fuse_two_units)
+
+    #ifdef ENABLE_XFORM_AUTO_CHECK_RP
+    schedule_dag *init_dag_cpy = dag.dup();
+    #endif
     
     while(true)
     {
@@ -668,8 +672,16 @@ void smart_fuse_two_units::transform(schedule_dag& dag, const scheduler& s, sche
     status.set_deadlock(false);
     status.set_junction(false);
 
+    #ifdef ENABLE_XFORM_AUTO_CHECK_RP
+    schedule_dag *dag_cpy = dag.dup();
+    #endif
     /* schedule DAG */
     s.schedule(dag, c);
+
+    #ifdef ENABLE_XFORM_AUTO_CHECK_RP
+    size_t rp = c.compute_rp_against_dag(*dag_cpy);
+    delete dag_cpy;
+    #endif
 
     XTM_BW_START(smart_fuse_two_units)
     /* unfuse units */
@@ -689,6 +701,11 @@ void smart_fuse_two_units::transform(schedule_dag& dag, const scheduler& s, sche
         c.expand_unit_at(j, fused[i]->get_chain());
         delete fused[i];
     }
+
+    #ifdef ENABLE_XFORM_AUTO_CHECK_RP
+    assert(rp == c.compute_rp_against_dag(*init_dag_cpy) && "smart_fuse_two_units did not preserve register pressure as expected");
+    delete init_dag_cpy;
+    #endif
 
     XTM_BW_STOP(smart_fuse_two_units)
 
@@ -842,6 +859,10 @@ void split_def_use_dom_use_deps::transform(schedule_dag& dag, const scheduler& s
     
     status.begin_transformation();
 
+    #ifdef ENABLE_XFORM_AUTO_CHECK_RP
+    schedule_dag *init_dag_cpy = dag.dup();
+    #endif
+
     /* Each iteration might modify the graph */
     while(true)
     {
@@ -983,7 +1004,14 @@ void split_def_use_dom_use_deps::transform(schedule_dag& dag, const scheduler& s
     status.set_deadlock(false);
     status.set_junction(false);
 
+    #ifdef ENABLE_XFORM_AUTO_CHECK_RP
+    schedule_dag *dag_cpy = dag.dup();
+    #endif
     s.schedule(dag, c);
+    #ifdef ENABLE_XFORM_AUTO_CHECK_RP
+    size_t rp = c.compute_rp_against_dag(*dag_cpy);
+    delete dag_cpy;
+    #endif
 
     XTM_BW_START(split_def_use_dom_use_deps)
     /* replace back units */
@@ -1008,6 +1036,11 @@ void split_def_use_dom_use_deps::transform(schedule_dag& dag, const scheduler& s
     }
 
     XTM_BW_STOP(split_def_use_dom_use_deps)
+
+    #ifdef ENABLE_XFORM_AUTO_CHECK_RP
+    assert(rp == c.compute_rp_against_dag(*init_dag_cpy) && "split_def_use_dom_use_deps did not preserve register pressure as expected");
+    delete init_dag_cpy;
+    #endif
 
     status.end_transformation();
 
@@ -1038,7 +1071,7 @@ void break_symmetrical_branch_merge::transform(schedule_dag& dag, const schedule
 
     status.begin_transformation();
     XTM_FW_START(break_symmetrical_branch_merge)
-    
+
     for(size_t u = 0; u < dag.get_units().size(); u++)
     {
         #if 0
@@ -1227,7 +1260,6 @@ void break_symmetrical_branch_merge::transform(schedule_dag& dag, const schedule
     status.set_junction(false);
 
     s.schedule(dag, c);
-    
 
     status.end_transformation();
 
@@ -1509,12 +1541,12 @@ void strip_dataless_units::transform(schedule_dag& dag, const scheduler& s, sche
                 goto Lskip;
             /* - no data in */
             for(size_t i = 0; i < dag.get_preds(unit).size(); i++)
-                if(dag.get_preds(unit)[i].kind() != schedule_dep::order_dep)
+                if(!dag.get_preds(unit)[i].is_order())
                     goto Lskip;
 
             /* - no data out */
             for(size_t i = 0; i < dag.get_succs(unit).size(); i++)
-                if(dag.get_succs(unit)[i].kind() != schedule_dep::order_dep)
+                if(!dag.get_succs(unit)[i].is_order())
                     goto Lskip;
             break;
             Lskip:
