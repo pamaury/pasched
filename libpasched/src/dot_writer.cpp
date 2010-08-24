@@ -121,6 +121,21 @@ void dump_schedule_dag_to_dot_file(const schedule_dag& dag, const char *filename
 
     fout << "digraph G {\n";
 
+    /* Global options */
+    bool print_virt_reg = true;
+    bool print_phys_reg = true;
+    bool print_order_reg = true;
+
+    for(size_t i = 0; i < opts.size(); i++)
+    {
+        if(opts[i].type == dag_printer_opt::po_hide_dep_labels)
+        {
+            print_virt_reg = !opts[i].hide_dep_labels.hide_virt;
+            print_phys_reg = !opts[i].hide_dep_labels.hide_phys;
+            print_order_reg = !opts[i].hide_dep_labels.hide_order;
+        }
+    }
+
     /* enumerate nodes */
     std::map< const schedule_unit *, std::string > name_map;
     /* matched list for dependencies */
@@ -156,12 +171,17 @@ void dump_schedule_dag_to_dot_file(const schedule_dag& dag, const char *filename
         switch(dep.kind())
         {
             case schedule_dep::virt_dep:
-                oss << "r" << dep.reg();
+                if(print_virt_reg)
+                    oss << "r" << dep.reg();
                 break;
             case schedule_dep::phys_dep:
-                oss << "p" << dep.reg();
+                if(print_phys_reg)
+                    oss << "p" << dep.reg();
                 break;
-            case schedule_dep::order_dep: oss << "order"; break;
+            case schedule_dep::order_dep:
+                if(print_order_reg)
+                    oss << "order";
+                break;
             default: oss << "?"; break;
         }
 

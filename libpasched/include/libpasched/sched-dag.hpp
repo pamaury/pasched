@@ -240,7 +240,9 @@ struct dag_printer_opt
         /* Color a node */
         po_color_node,
         /* Color a dependency */
-        po_color_dep
+        po_color_dep,
+        /* Don't print register names */
+        po_hide_dep_labels
     };
 
     dag_printer_opt_type type;
@@ -262,6 +264,15 @@ struct dag_printer_opt
         /* Match all or only one ? */
         bool match_all;
     }color_dep;
+    struct
+    {
+        /* Hide data deps register name */
+        bool hide_virt;
+        /* Ditto for phys */
+        bool hide_phys;
+        /* Ditto for order */
+        bool hide_order;
+    }hide_dep_labels;
 };
 
 void dump_schedule_dag_to_dot_file(const schedule_dag& dag,

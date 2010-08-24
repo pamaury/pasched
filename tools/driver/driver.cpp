@@ -13,6 +13,7 @@
 #include <sstream>
 #include <cmath>
 #include <stdint.h>
+#include <fstream>
 
 /**
  * Shortcuts for often used types
@@ -41,28 +42,174 @@ void lsd_read(const char *filename, pasched::schedule_dag& dag)
     pasched::build_schedule_dag_from_lsd_file(filename, dag);
 }
 
-void dot_write(pasched::schedule_dag& dag, const char *filename)
+void dot_write(const pasched::schedule_dag& dag, const char *filename, const std::vector< pasched::dag_printer_opt >& opts)
 {
-    pasched::dump_schedule_dag_to_dot_file(dag, filename);
+    pasched::dump_schedule_dag_to_dot_file(dag, filename, opts);
 }
 
-void dotsvg_write(pasched::schedule_dag& dag, const char *filename)
+void dotsvg_write(const pasched::schedule_dag& dag, const char *filename, const std::vector< pasched::dag_printer_opt >& opts)
 {
     char *name = tmpnam(NULL);
-    pasched::dump_schedule_dag_to_dot_file(dag, name);
+    pasched::dump_schedule_dag_to_dot_file(dag, name, opts);
     system((std::string("dot -Tsvg -o ") + filename + " " + name).c_str());
     remove(name);
 }
 
-void lsd_write(pasched::schedule_dag& dag, const char *filename)
+void dotpdf_write(const pasched::schedule_dag& dag, const char *filename, const std::vector< pasched::dag_printer_opt >& opts)
+{
+    char *name = tmpnam(NULL);
+    pasched::dump_schedule_dag_to_dot_file(dag, name, opts);
+    system((std::string("dot -Tpdf -o ") + filename + " " + name).c_str());
+    remove(name);
+}
+
+void lsd_write(const pasched::schedule_dag& dag, const char *filename, const std::vector< pasched::dag_printer_opt >& opts)
 {
     pasched::dump_schedule_dag_to_lsd_file(dag, filename);
 }
 
-void null_write(pasched::schedule_dag& dag, const char *filename)
+void null_write(const pasched::schedule_dag& dag, const char *filename, const std::vector< pasched::dag_printer_opt >& opts)
 {
     (void) dag;
     (void) filename;
+    (void) opts;
+}
+
+std::string tex_escape_string(const std::string& str)
+{
+    std::ostringstream oss;
+
+    for(size_t i = 0; i < str.size(); i++)
+    {
+        char c = str[i];
+        if(c == '\\')
+            oss << "\\backslash ";
+        else if(c == '<' && (i + 1) < str.size() && str[i + 1] == '-')
+        {
+            oss << "\\leftarrow ";
+            i++;
+        }
+        else if(c == '<')
+            oss << "\\langle ";
+        else if(c == '>')
+            oss << "\\rangle ";
+        else
+            oss << c;
+    }
+
+    return oss.str();
+}
+
+void chain_analysis_write(const pasched::schedule_dag& dag, const pasched::schedule_chain& chain,
+    const char *filename, const std::vector< pasched::dag_printer_opt >& opts)
+{
+    std::ofstream fout(filename);
+
+    size_t rp = chain.compute_rp_against_dag(dag);
+    
+    fout << "\\documentclass{article}\n";
+    fout << "\\usepackage{amsmath,amssymb,mathrsfs}\n";
+    fout << "\\usepackage{color}\n";
+    fout << "\\usepackage[utf8]{inputenc}\n";
+    fout << "\\usepackage[T1]{fontenc}\n";
+    fout << "\\usepackage[english]{babel}\n";
+    fout << "\\usepackage{multirow}\n";
+    fout << "\\usepackage{colortbl}\n";
+    fout << "\\begin{document}\n";
+    fout << "\\begin{tabular}{l";
+    for(size_t i = 0; i < rp; i++)
+        fout << "c";
+    fout <<"}\n";
+
+    std::map< pasched::schedule_dep::reg_t, size_t > reg_use_left;
+    std::map< pasched::schedule_dep::reg_t, size_t > reg_map;
+    std::map< size_t, pasched::schedule_dep::reg_t > rev_reg_map;
+    std::map< size_t, bool > color_switch;
+    for(size_t i = 0; i < chain.get_unit_count(); i++)
+    {
+        const pasched::schedule_unit *unit = chain.get_unit_at(i);
+        
+        std::vector< bool > alive[2];
+        alive[0].resize(rp);
+        alive[1].resize(rp);
+        /* analysis */
+        for(size_t j = 0; j < rp; j++)
+            if(rev_reg_map.find(j) != rev_reg_map.end())
+                alive[0][j] = true;
+        /* printing */
+        fout << "\\multirow{2}{*}{$" << tex_escape_string(chain.get_unit_at(i)->to_string()) << "$}";
+
+        for(size_t j = 0; j < rp; j++)
+        {
+            fout << "&";
+            if(alive[0][j])
+            {
+                fout << "\\cellcolor{";
+                if(color_switch[j])
+                    fout << "blue";
+                else
+                    fout << "cyan";
+                fout << "}";
+            }
+        }
+        fout << "\\\\\n";
+        /* kill registers */
+        for(size_t j = 0; j < dag.get_preds(unit).size(); j++)
+        {
+            const pasched::schedule_dep& dep = dag.get_preds(unit)[j];
+            if(!dep.is_data())
+                continue;
+            assert(reg_map.find(dep.reg()) != reg_map.end());
+            assert(reg_use_left.find(dep.reg()) != reg_use_left.end());
+            assert(rev_reg_map.find(reg_map[dep.reg()]) != rev_reg_map.end());
+            if((--reg_use_left[dep.reg()]) == 0)
+            {
+                reg_use_left.erase(dep.reg());
+                rev_reg_map.erase(reg_map[dep.reg()]);
+                reg_map.erase(dep.reg());
+            }
+        }
+        /* create registers */
+        for(size_t j = 0; j < dag.get_succs(unit).size(); j++)
+        {
+            const pasched::schedule_dep& dep = dag.get_succs(unit)[j];
+            if(!dep.is_data())
+                continue;
+            if((++reg_use_left[dep.reg()]) == 1)
+            {
+                for(size_t j = 0; j < rp; j++)
+                    if(rev_reg_map.find(j) == rev_reg_map.end())
+                    {
+                        reg_map[dep.reg()] = j;
+                        rev_reg_map[j] = dep.reg();
+                        color_switch[j] = !color_switch[j];
+                        break;
+                    }
+            }
+        }
+        /* analysis */
+        for(size_t j = 0; j < rp; j++)
+            if(rev_reg_map.find(j) != rev_reg_map.end())
+                alive[1][j] = true;
+        /* printing */
+        for(size_t j = 0; j < rp; j++)
+        {
+            fout << "&";
+            if(alive[1][j])
+            {
+                fout << "\\cellcolor{";
+                if(color_switch[j])
+                    fout << "blue";
+                else
+                    fout << "cyan";
+                fout << "}";
+            }
+        }
+        fout << "\\\\\n";
+        fout << "\\hline";
+    }
+    fout << "\\end{tabular}\n";
+    fout << "\\end{document}\n";
 }
 
 /**
@@ -144,7 +291,10 @@ class dag_accumulator : public pasched::transformation
  * Few tables for passes registration and blabla
  */
 typedef void (*read_cb_t)(const char *filename, pasched::schedule_dag& dag);
-typedef void (*write_cb_t)(pasched::schedule_dag& dag, const char *filename);
+typedef void (*write_cb_t)(const pasched::schedule_dag& dag, const char *filename,
+    const std::vector< pasched::dag_printer_opt >& opts);
+typedef void (*chain_write_cb_t)(const pasched::schedule_dag& dag, const pasched::schedule_chain& chain,
+    const char *filename, const std::vector< pasched::dag_printer_opt >& opts);
 
 struct format_t
 {
@@ -153,21 +303,26 @@ struct format_t
     const char *desc;
     read_cb_t read;
     write_cb_t write;
+    chain_write_cb_t chain_write;
 };
 
 const char *ddl_ext[] = {"ddl", 0};
 const char *dot_ext[] = {"dot", 0};
 const char *dotsvg_ext[] = {"svg", 0};
+const char *dotpdf_ext[] = {"pdf", 0};
 const char *null_ext[] = {0};
+const char *analysis_ext[] = {0};
 
 format_t formats[] =
 {
-    {"ddl", ddl_ext, "Data Dependency Language file", &ddl_read, 0},
-    {"lsd", ddl_ext, "LLVM Schedule DAG file", &lsd_read, &lsd_write},
-    {"dot", dot_ext, "Graphviz file", 0, &dot_write},
-    {"dotsvg", dotsvg_ext, "Graphviz file rendered to SVG", 0, &dotsvg_write},
-    {"null", null_ext, "Drop output to the void", 0, &null_write},
-    {0, 0, 0, 0, 0}
+    {"ddl", ddl_ext, "Data Dependency Language file", &ddl_read, 0, 0},
+    {"lsd", ddl_ext, "LLVM Schedule DAG file", &lsd_read, &lsd_write, 0},
+    {"dot", dot_ext, "Graphviz file", 0, &dot_write, 0},
+    {"dotsvg", dotsvg_ext, "Graphviz file rendered to SVG", 0, &dotsvg_write, 0},
+    {"dotpdf", dotpdf_ext, "Graphviz file rendered to PDF", 0, &dotpdf_write, 0},
+    {"null", null_ext, "Drop output to the void", 0, &null_write, 0},
+    {"analysis", analysis_ext, "Live analysis of the resulting schedule in Tex", 0, 0, &chain_analysis_write},
+    {0, 0, 0, 0, 0, 0}
 };
 
 /**
@@ -184,10 +339,6 @@ void display_usage()
     for(int i = 0; formats[i].name != 0; i++)
     {
         std::cout << " -" << std::setw(max_size) << std::left << formats[i].name << "\t" << formats[i].desc;
-        if(formats[i].read == 0)
-            std::cout << "(Output only)";
-        if(formats[i].write == 0)
-            std::cout << "(Input only)";
         std::cout << "\n";
     }
 }
@@ -201,7 +352,7 @@ TM_DECLARE(dtm_total, "dtm-total")
 int __main(int argc, char **argv)
 {
     TM_START(dtm_total)
-    pasched::set_debug(std::cout);
+    //pasched::set_debug(std::cout);
     
     if(argc < 5)
     {
@@ -238,7 +389,7 @@ int __main(int argc, char **argv)
         return 1;
     }
 
-    if(formats[to].write == 0)
+    if(formats[to].write == 0 && formats[to].chain_write == 0)
     {
         std::cout << "Format '" << formats[to].name << "' cannot be used as output\n";
         return 1;
@@ -267,8 +418,9 @@ int __main(int argc, char **argv)
     dag_accumulator accumulator;
     pipeline.add_stage(new pasched::unique_reg_ids);
     pipeline.add_stage(&after_unique_accum);
-    pipeline.add_stage(&loop);
     pipeline.add_stage(&accumulator);
+    pipeline.add_stage(&loop);
+    //pipeline.add_stage(&accumulator);
     
     snd_stage_pipe.add_stage(new pasched::strip_dataless_units);
     snd_stage_pipe.add_stage(new pasched::strip_useless_order_deps);
@@ -315,7 +467,19 @@ int __main(int argc, char **argv)
     //std::cout << "Trivial-DAGs-scheduled: " << statistics.m_trivials << "/" << statistics.m_count << "\n";
 
     TM_START(dtm_write)
-    formats[to].write(accumulator.get_dag(), argv[4]);
+    std::vector< pasched::dag_printer_opt > opts;
+    {
+        pasched::dag_printer_opt o;
+        o.type = pasched::dag_printer_opt::po_hide_dep_labels;
+        o.hide_dep_labels.hide_order = true;
+        o.hide_dep_labels.hide_virt = true;
+        o.hide_dep_labels.hide_phys = true;
+        opts.push_back(o);
+    }
+    if(formats[to].write != 0)
+        formats[to].write(accumulator.get_dag(), argv[4], opts);
+    if(formats[to].chain_write != 0)
+        formats[to].chain_write(after_unique_accum.get_dag(), chain, argv[4], opts);
     TM_STOP(dtm_write)
 
     TM_STOP(dtm_total)

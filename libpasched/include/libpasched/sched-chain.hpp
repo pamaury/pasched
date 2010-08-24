@@ -29,6 +29,8 @@ class schedule_chain
     virtual void insert_units_at(size_t pos, const schedule_chain& c) = 0;
     virtual void expand_unit_at(size_t pos, const std::vector< const schedule_unit * >&) = 0;
     virtual void expand_unit_at(size_t pos, const schedule_chain& c) = 0;
+    /* return get_unit_count() if not found */
+    virtual size_t find_unit(const schedule_unit *unit) const;
     
     virtual void append_unit(const schedule_unit *unit) = 0;
 

@@ -163,6 +163,18 @@ size_t schedule_chain::compute_rp_against_dag(const schedule_dag& dag, bool igno
     return rp;
 }
 
+size_t schedule_chain::find_unit(const schedule_unit *unit) const
+{
+    size_t i = 0;
+    while(i < get_unit_count())
+    {
+        if(get_unit_at(i) == unit)
+            break;
+        i++;
+    }
+    return i;
+}
+
 /**
  * generic_schedule_chain
  */
