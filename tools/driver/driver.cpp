@@ -93,6 +93,10 @@ std::string tex_escape_string(const std::string& str)
             oss << "\\langle ";
         else if(c == '>')
             oss << "\\rangle ";
+        else if(c == '_')
+            oss << "\\_";
+        else if(c == '%')
+            oss << "\\%";
         else
             oss << c;
     }
@@ -115,10 +119,11 @@ void chain_analysis_write(const pasched::schedule_dag& dag, const pasched::sched
     fout << "\\usepackage[english]{babel}\n";
     fout << "\\usepackage{multirow}\n";
     fout << "\\usepackage{colortbl}\n";
+    fout << "\\thispagestyle{empty}\n";
     fout << "\\begin{document}\n";
-    fout << "\\begin{tabular}{l";
+    fout << "\\begin{tabular}{l@{}";
     for(size_t i = 0; i < rp; i++)
-        fout << "c";
+        fout << "c@{}";
     fout <<"}\n";
 
     std::map< pasched::schedule_dep::reg_t, size_t > reg_use_left;
@@ -130,29 +135,18 @@ void chain_analysis_write(const pasched::schedule_dag& dag, const pasched::sched
         const pasched::schedule_unit *unit = chain.get_unit_at(i);
         
         std::vector< bool > alive[2];
+        std::vector< std::string > color[2];
         alive[0].resize(rp);
+        color[0].resize(rp);
         alive[1].resize(rp);
+        color[1].resize(rp);
         /* analysis */
         for(size_t j = 0; j < rp; j++)
             if(rev_reg_map.find(j) != rev_reg_map.end())
-                alive[0][j] = true;
-        /* printing */
-        fout << "\\multirow{2}{*}{$" << tex_escape_string(chain.get_unit_at(i)->to_string()) << "$}";
-
-        for(size_t j = 0; j < rp; j++)
-        {
-            fout << "&";
-            if(alive[0][j])
             {
-                fout << "\\cellcolor{";
-                if(color_switch[j])
-                    fout << "blue";
-                else
-                    fout << "cyan";
-                fout << "}";
+                alive[0][j] = true;
+                color[0][j] = color_switch[j] ? "1,0,0" : "0,1,0";
             }
-        }
-        fout << "\\\\\n";
         /* kill registers */
         for(size_t j = 0; j < dag.get_preds(unit).size(); j++)
         {
@@ -190,20 +184,43 @@ void chain_analysis_write(const pasched::schedule_dag& dag, const pasched::sched
         /* analysis */
         for(size_t j = 0; j < rp; j++)
             if(rev_reg_map.find(j) != rev_reg_map.end())
+            {
                 alive[1][j] = true;
+                color[1][j] = color_switch[j] ? "1,0,0" : "0,1,0";
+            }
         /* printing */
+        {
+            std::string str = chain.get_unit_at(i)->to_string();
+            if(str.find("\n") != std::string::npos)
+            {
+                fout << "$\\begin{array}{c}";
+                str = tex_escape_string(str);
+                size_t pos = str.find("\n");
+                while(pos != std::string::npos)
+                {
+                    str.replace(pos, 1, "\\\\");
+                    pos = str.find("\n");
+                }
+                
+                fout << str;
+                fout << "\\end{array}$";
+            }
+            else
+                fout << "$" << tex_escape_string(str) << "$";
+        }
+        
         for(size_t j = 0; j < rp; j++)
         {
             fout << "&";
-            if(alive[1][j])
+            fout << "\\begin{tabular}{@{}c@{}}";
+            for(size_t k = 0; k < 2; k++)
             {
-                fout << "\\cellcolor{";
-                if(color_switch[j])
-                    fout << "blue";
-                else
-                    fout << "cyan";
-                fout << "}";
+                if(alive[k][j])
+                    fout << "\\begin{tabular}{>{\\columncolor[rgb]{" << color[k][j] <<
+                        "}[0pt]}c}\\thinspace\\thinspace\\end{tabular}";
+                fout << "\\\\";
             }
+            fout << "\\end{tabular}";
         }
         fout << "\\\\\n";
         fout << "\\hline";

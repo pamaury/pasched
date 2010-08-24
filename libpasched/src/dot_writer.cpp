@@ -150,8 +150,15 @@ void dump_schedule_dag_to_dot_file(const schedule_dag& dag, const char *filename
         name_map[unit] = oss.str();
 
         std::string label = unit->to_string();
-        if(label.find("<-") != std::string::npos)
-            label.replace(label.find("<-"), 2, "&larr;");
+        {
+            size_t pos = label.find("<-");
+            while(pos != std::string::npos)
+            {
+                label.replace(pos, 2, "&larr;");
+                pos = label.find("<-");
+            }
+            
+        }
         
         fout << tab << oss.str() << " [\n";
         fout << tab << tab << "label = \"" << escape_label(label) << "\"\n";
