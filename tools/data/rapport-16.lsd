@@ -1,0 +1,21 @@
+Unit 0xe04c60 Name STR<Mem:ST4[%5]>
+Unit 0xe04d80 Name TokenFactor
+To 0xe04c60 Latency 0 Kind order
+Unit 0xe04ea0 Name STR<Mem:ST4[%b]>
+To 0xe04d80 Latency 0 Kind order
+To 0xe05320 Latency 0 Kind order
+To 0xe05440 Latency 0 Kind order
+Unit 0xe04fc0 Name STR<Mem:ST4[%this]>
+To 0xe04ea0 Latency 0 Kind order
+Unit 0xe050e0 Name CopyFromReg
+To 0xe04fc0 Latency 0 Kind data Reg 0
+To 0xe04ea0 Latency 0 Kind order
+Unit 0xe05200 Name CopyFromReg
+To 0xe04ea0 Latency 0 Kind data Reg 0
+To 0xe05440 Latency 0 Kind data Reg 0
+Unit 0xe05320 Name LDR<Mem:LD4[%this]>
+To 0xe04c60 Latency 0 Kind data Reg 0
+To 0xe04d80 Latency 0 Kind order
+Unit 0xe05440 Name LDR<Mem:LD4[%2]>
+To 0xe04c60 Latency 0 Kind data Reg 0
+To 0xe04d80 Latency 0 Kind order
