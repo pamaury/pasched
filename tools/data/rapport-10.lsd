@@ -1,0 +1,9 @@
+Unit A Name a <- <truc>
+To BC Latency 1 Kind data Reg 0
+To D Latency 1 Kind data Reg 0
+Unit BC Irp 2 Name b <- <bla>\
+<truc> <- a * b
+To E Latency 1 Kind order
+Unit D Name <bla> <- a * a
+To E Latency 1 Kind order
+Unit E Name exit

@@ -1,0 +1,9 @@
+Unit A Name mov ax 0
+To B Latency 1 Kind data Reg 0
+To B Latency 1 Kind data Reg 1
+Unit B Name movzx eax ax
+To C Latency 1 Kind data Reg 1
+To C Latency 1 Kind data Reg 2
+To C Latency 1 Kind data Reg 3
+To C Latency 1 Kind data Reg 4
+Unit C Name call bidule

@@ -99,7 +99,7 @@ std::string tex_escape_string(const std::string& str)
         else if(c == '%')
             oss << "\\%";
         else if(c == ' ')
-            oss << "\\thinspace ";
+            oss << "\\thinspace\\thinspace ";
         else
             oss << c;
     }
