@@ -104,6 +104,43 @@ std::string tex_escape_string(const std::string& str)
     return oss.str();
 }
 
+std::string encode(size_t i)
+{
+    if(i == 0)
+        return "z";
+    std::string s;
+    while(i != 0)
+    {
+        s += 'a' + i % 10;
+        i /= 10;
+    }
+    return s;
+}
+
+std::string render_instruction(std::string str, size_t& nb_lines)
+{
+    nb_lines = 1;
+    std::string text;
+    if(str.find("\n") != std::string::npos)
+    {
+        text = "$\\begin{array}{l}";
+        str = tex_escape_string(str);
+        size_t pos = str.find("\n");
+        while(pos != std::string::npos)
+        {
+            nb_lines++;
+            str.replace(pos, 1, "\\\\");
+            pos = str.find("\n");
+        }
+        
+        text += str;
+        text += "\\end{array}$";
+    }
+    else
+        text = std::string("$") + tex_escape_string(str) + "$";
+    return text;
+}
+
 void chain_analysis_write(const pasched::schedule_dag& dag, const pasched::schedule_chain& chain,
     const char *filename, const std::vector< pasched::dag_printer_opt >& opts)
 {
@@ -119,34 +156,31 @@ void chain_analysis_write(const pasched::schedule_dag& dag, const pasched::sched
     fout << "\\usepackage[english]{babel}\n";
     fout << "\\usepackage{multirow}\n";
     fout << "\\usepackage{colortbl}\n";
+    fout << "\\usepackage{calc}\n";
     fout << "\\thispagestyle{empty}\n";
     fout << "\\begin{document}\n";
-    fout << "\\begin{tabular}{l@{}";
-    for(size_t i = 0; i < rp; i++)
-        fout << "c@{}";
-    fout <<"}\n";
 
     std::map< pasched::schedule_dep::reg_t, size_t > reg_use_left;
     std::map< pasched::schedule_dep::reg_t, size_t > reg_map;
     std::map< size_t, pasched::schedule_dep::reg_t > rev_reg_map;
     std::map< size_t, bool > color_switch;
+    
+    for(size_t i = 0; i < chain.get_unit_count(); i++)
+    {
+        fout << "\\newcommand{\\text" << encode(i) << "}{" << render_instruction(chain.get_unit_at(i)->to_string()) << "}\n";
+        fout << "\\newlength{\\textheight" << encode(i) << "}\n";
+        fout << "\\settoheight{\\textheight" << encode(i) << "}{\\text" << encode(i) << "}\n";
+    }
+
+    fout << "\\begin{tabular}{l@{}";
+    for(size_t i = 0; i < rp; i++)
+        fout << "c@{}";
+    fout <<"}\n";
     for(size_t i = 0; i < chain.get_unit_count(); i++)
     {
         const pasched::schedule_unit *unit = chain.get_unit_at(i);
         
-        std::vector< bool > alive[2];
-        std::vector< std::string > color[2];
-        alive[0].resize(rp);
-        color[0].resize(rp);
-        alive[1].resize(rp);
-        color[1].resize(rp);
-        /* analysis */
-        for(size_t j = 0; j < rp; j++)
-            if(rev_reg_map.find(j) != rev_reg_map.end())
-            {
-                alive[0][j] = true;
-                color[0][j] = color_switch[j] ? "1,0,0" : "0,1,0";
-            }
+        std::map< size_t, size_t > new_live_range;
         /* kill registers */
         for(size_t j = 0; j < dag.get_preds(unit).size(); j++)
         {
@@ -179,48 +213,23 @@ void chain_analysis_write(const pasched::schedule_dag& dag, const pasched::sched
                         color_switch[j] = !color_switch[j];
                         break;
                     }
+                new_live_range[reg_map[dep.reg()]] =
+                    std::max(new_live_range[reg_map[dep.reg()]], chain.find_unit(dep.to()));
             }
         }
-        /* analysis */
-        for(size_t j = 0; j < rp; j++)
-            if(rev_reg_map.find(j) != rev_reg_map.end())
-            {
-                alive[1][j] = true;
-                color[1][j] = color_switch[j] ? "1,0,0" : "0,1,0";
-            }
         /* printing */
-        {
-            std::string str = chain.get_unit_at(i)->to_string();
-            if(str.find("\n") != std::string::npos)
-            {
-                fout << "$\\begin{array}{c}";
-                str = tex_escape_string(str);
-                size_t pos = str.find("\n");
-                while(pos != std::string::npos)
-                {
-                    str.replace(pos, 1, "\\\\");
-                    pos = str.find("\n");
-                }
-                
-                fout << str;
-                fout << "\\end{array}$";
-            }
-            else
-                fout << "$" << tex_escape_string(str) << "$";
-        }
-        
+        fout << "\\text" << encode(i);
+
         for(size_t j = 0; j < rp; j++)
         {
             fout << "&";
-            fout << "\\begin{tabular}{@{}c@{}}";
-            for(size_t k = 0; k < 2; k++)
-            {
-                if(alive[k][j])
-                    fout << "\\begin{tabular}{>{\\columncolor[rgb]{" << color[k][j] <<
-                        "}[0pt]}c}\\thinspace\\thinspace\\end{tabular}";
-                fout << "\\\\";
-            }
-            fout << "\\end{tabular}";
+            if(new_live_range.find(j) == new_live_range.end())
+                continue;
+            fout << "\\multirow{" << new_live_range[j] - i + 1 << "}*{\\colorbox{red}{\\rule{0pt}{";
+            fout << "\\textheight" << encode(i);
+            for(size_t k = i + 1; k < new_live_range[j]; k++)
+                fout << "+\\textheight" << encode(k);
+            fout << "}}}";
         }
         fout << "\\\\\n";
         fout << "\\hline";
