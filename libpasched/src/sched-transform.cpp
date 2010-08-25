@@ -781,7 +781,7 @@ void simplify_order_cuts::do_transform(schedule_dag& dag, const scheduler& s, sc
 
         /* handle trivial case where the whole graph is reachable */
         if(reach.size() == dag.get_units().size())
-            break;
+            continue;
 
         /* extract this subgraph for further analysis */
         schedule_dag *top = dag.dup_subgraph(reach);

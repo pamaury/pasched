@@ -502,9 +502,9 @@ int __main(int argc, char **argv)
     dag_accumulator accumulator;
     pipeline.add_stage(new pasched::unique_reg_ids);
     pipeline.add_stage(&after_unique_accum);
+    //pipeline.add_stage(&loop);
+    pipeline.add_stage(new pasched::simplify_order_cuts);
     pipeline.add_stage(&accumulator);
-    pipeline.add_stage(&loop);
-    //pipeline.add_stage(&accumulator);
     
     snd_stage_pipe.add_stage(new pasched::strip_dataless_units);
     snd_stage_pipe.add_stage(new pasched::strip_useless_order_deps);
@@ -539,7 +539,6 @@ int __main(int argc, char **argv)
      * if the reg id have not been uniqued. That why we capture the dag just after
      * reg renaming */
     std::cout << "RP=" << chain.compute_rp_against_dag(after_unique_accum.get_dag()) << "\n";
-    delete dag_copy;
     //debug_view_dag(accumulator.get_dag());
     //debug_view_chain(chain);
     //debug_view_scheduled_dag(after_unique_accum.get_dag(), chain);
@@ -565,6 +564,8 @@ int __main(int argc, char **argv)
     if(formats[to].chain_write != 0)
         formats[to].chain_write(after_unique_accum.get_dag(), chain, argv[4], opts);
     TM_STOP(dtm_write)
+
+    delete dag_copy;
 
     TM_STOP(dtm_total)
 
