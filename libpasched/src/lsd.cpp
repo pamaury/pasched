@@ -9,12 +9,16 @@ namespace PAMAURY_SCHEDULER_NS
 
 std::string lsd_schedule_unit::to_string() const
 {
-    return m_name;
+    if(m_irp == 0)
+        return m_name;
+    std::ostringstream oss;
+    oss << "[IRP=" << m_irp << "]\n" << m_name;
+    return oss.str();
 }
 
 unsigned lsd_schedule_unit::internal_register_pressure() const
 {
-    return 0;
+    return m_irp;
 }
 
 const lsd_schedule_unit *lsd_schedule_unit::dup() const
@@ -25,6 +29,11 @@ const lsd_schedule_unit *lsd_schedule_unit::dup() const
 const lsd_schedule_unit *lsd_schedule_unit::deep_dup() const
 {
     return dup();
+}
+
+void lsd_schedule_unit::set_internal_register_pressure(unsigned irp)
+{
+    m_irp = irp;
 }
 
 void dump_schedule_dag_to_lsd_stream(const schedule_dag& dag, std::ostream& fout)
@@ -92,6 +101,21 @@ void build_schedule_dag_from_lsd_stream(std::istream& fin, schedule_dag& dag)
             current_unit = name_map[name];
 
             line = trim(line.substr(pos));
+            /* Extra Irp ? */
+            if(line.substr(0, 4) == "Irp ")
+            {
+                line = trim(line.substr(4));
+                pos = line.find(" ");
+                if(pos == std::string::npos)
+                    throw std::runtime_error("illformed lsd file: Unit line type with invalid irp ('" + line + "')");
+                std::istringstream iss(trim(line.substr(0, pos)));
+                size_t irp;
+                if(!(iss >> irp) || !iss.eof())
+                    throw std::runtime_error("illformed lsd file: Unit line type with invalid irp ('" + line + "')");
+                line = trim(line.substr(pos));
+                units[current_unit]->set_internal_register_pressure(irp);
+            }
+            
             if(line.substr(0, 5) != "Name ")
                 throw std::runtime_error("illformed lsd file: Unit line type with no name ('" + line + "')");
             line = line.substr(5); // No trim !

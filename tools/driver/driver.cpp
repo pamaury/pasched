@@ -14,6 +14,7 @@
 #include <cmath>
 #include <stdint.h>
 #include <fstream>
+#include <algorithm>
 
 /**
  * Shortcuts for often used types
@@ -117,9 +118,8 @@ std::string encode(size_t i)
     return s;
 }
 
-std::string render_instruction(std::string str, size_t& nb_lines)
+std::string render_instruction(std::string str)
 {
-    nb_lines = 1;
     std::string text;
     if(str.find("\n") != std::string::npos)
     {
@@ -128,7 +128,6 @@ std::string render_instruction(std::string str, size_t& nb_lines)
         size_t pos = str.find("\n");
         while(pos != std::string::npos)
         {
-            nb_lines++;
             str.replace(pos, 1, "\\\\");
             pos = str.find("\n");
         }
@@ -164,13 +163,8 @@ void chain_analysis_write(const pasched::schedule_dag& dag, const pasched::sched
     std::map< pasched::schedule_dep::reg_t, size_t > reg_map;
     std::map< size_t, pasched::schedule_dep::reg_t > rev_reg_map;
     std::map< size_t, bool > color_switch;
-    
-    for(size_t i = 0; i < chain.get_unit_count(); i++)
-    {
-        fout << "\\newcommand{\\text" << encode(i) << "}{" << render_instruction(chain.get_unit_at(i)->to_string()) << "}\n";
-        fout << "\\newlength{\\textheight" << encode(i) << "}\n";
-        fout << "\\settoheight{\\textheight" << encode(i) << "}{\\text" << encode(i) << "}\n";
-    }
+
+    const std::string __color[2] = {"red", "green"};
 
     fout << "\\begin{tabular}{l@{}";
     for(size_t i = 0; i < rp; i++)
@@ -180,7 +174,14 @@ void chain_analysis_write(const pasched::schedule_dag& dag, const pasched::sched
     {
         const pasched::schedule_unit *unit = chain.get_unit_at(i);
         
-        std::map< size_t, size_t > new_live_range;
+        std::vector< bool > alive[2];
+        std::vector< std::string > color[2];
+        /* analysis */
+        for(size_t j = 0; j < rp; j++)
+        {
+            alive[0].push_back(rev_reg_map.find(j) != rev_reg_map.end());
+            color[0].push_back(__color[color_switch[j]]);
+        }
         /* kill registers */
         for(size_t j = 0; j < dag.get_preds(unit).size(); j++)
         {
@@ -213,25 +214,35 @@ void chain_analysis_write(const pasched::schedule_dag& dag, const pasched::sched
                         color_switch[j] = !color_switch[j];
                         break;
                     }
-                new_live_range[reg_map[dep.reg()]] =
-                    std::max(new_live_range[reg_map[dep.reg()]], chain.find_unit(dep.to()));
             }
         }
-        /* printing */
-        fout << "\\text" << encode(i);
-
+        /* analysis */
         for(size_t j = 0; j < rp; j++)
         {
-            fout << "&";
-            if(new_live_range.find(j) == new_live_range.end())
-                continue;
-            fout << "\\multirow{" << new_live_range[j] - i + 1 << "}*{\\colorbox{red}{\\rule{0pt}{";
-            fout << "\\textheight" << encode(i);
-            for(size_t k = i + 1; k < new_live_range[j]; k++)
-                fout << "+\\textheight" << encode(k);
-            fout << "}}}";
+            alive[1].push_back(rev_reg_map.find(j) != rev_reg_map.end());
+            color[1].push_back(__color[color_switch[j]]);
         }
-        fout << "\\\\\n";
+        /* printing */
+        std::string str = chain.get_unit_at(i)->to_string();
+        size_t nb_lines = std::count(str.begin(), str.end(), '\n') + 1;
+        size_t real_nb_lines = nb_lines + (nb_lines % 2);
+        
+        fout << "\\multirow{" << real_nb_lines << "}*{" << render_instruction(str) << "}";
+
+        for(size_t k = 0; k < 2; k++)
+        {
+            for(size_t rep = 0; rep < real_nb_lines / 2; rep++)
+            {
+                for(size_t j = 0; j < rp; j++)
+                {
+                    fout << "&";
+                    if(!alive[k][j])
+                        continue;
+                    fout << "\\multicolumn{1}{@{}>{\\columncolor{" << color[k][j] << "}[0pt]}m{1ex}@{}}{}\\enskip";
+                }
+                fout << "\\\\\n";
+            }
+        }
         fout << "\\hline";
     }
     fout << "\\end{tabular}\n";

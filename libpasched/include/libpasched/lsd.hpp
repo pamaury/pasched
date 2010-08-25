@@ -49,7 +49,7 @@ Name
 class lsd_schedule_unit : public schedule_unit
 {
     public:
-    lsd_schedule_unit(const std::string& id) : m_id(id) {}
+    lsd_schedule_unit(const std::string& id) : m_id(id), m_irp(0) {}
     virtual ~lsd_schedule_unit() {}
 
     virtual std::string to_string() const;
@@ -61,10 +61,12 @@ class lsd_schedule_unit : public schedule_unit
     virtual const lsd_schedule_unit *deep_dup() const;
 
     virtual unsigned internal_register_pressure() const;
+    virtual void set_internal_register_pressure(unsigned irp);
 
     protected:
     std::string m_id;
     std::string m_name;
+    unsigned m_irp;
 };
 
 /**
