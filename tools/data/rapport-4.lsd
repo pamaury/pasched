@@ -1,0 +1,7 @@
+Unit 0 Name u <- <bla>
+To A Latency 1 Kind data Reg 0
+Unit A Name a <- <truc> / u\
+b <- <truc> % u\
+c <- a+b
+To C Latency 1 Kind data Reg 2
+Unit C Name <res> <- c

@@ -1,0 +1,10 @@
+Unit A Name a <- <truc>
+To C Latency 1 Kind data Reg 0
+Unit B Name b <- <machin>
+To C Latency 1 Kind data Reg 1
+Unit C Name c <- a + b
+To E Latency 1 Kind data Reg 2
+Unit D Name d <- <bidule>
+To E Latency 1 Kind data Reg 3
+To A Latency 1 Kind order
+Unit E Name <res> <- c * d

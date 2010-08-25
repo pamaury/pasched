@@ -1,0 +1,12 @@
+Unit Unit0 Name cmp <a> <b>
+To Unit1 Latency 1 Kind phys Reg 42
+To Unit2 Latency 1 Kind phys Reg 42
+Unit Unit1 Name ccmp <b> <c>
+To Unit3 Latency 1 Kind phys Reg 42
+Unit Unit2 Name cmov <a> <c>
+To Unit4 Latency 1 Kind data Reg 0
+To Unit4 Latency 1 Kind data Reg 1
+To Unit4 Latency 1 Kind data Reg 2
+Unit Unit3 Name cmov <a> <b>
+To Unit4 Latency 1 Kind order
+Unit Unit4 Name exit

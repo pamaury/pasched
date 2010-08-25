@@ -98,6 +98,8 @@ std::string tex_escape_string(const std::string& str)
             oss << "\\_";
         else if(c == '%')
             oss << "\\%";
+        else if(c == ' ')
+            oss << "\\thinspace ";
         else
             oss << c;
     }
@@ -123,7 +125,7 @@ std::string render_instruction(std::string str)
     std::string text;
     if(str.find("\n") != std::string::npos)
     {
-        text = "$\\begin{array}{l}";
+        text = "$\\begin{array}{@{}l@{}}";
         str = tex_escape_string(str);
         size_t pos = str.find("\n");
         while(pos != std::string::npos)
@@ -167,7 +169,7 @@ void chain_analysis_write(const pasched::schedule_dag& dag, const pasched::sched
     const std::string __color[2] = {"red", "green"};
     const std::string irp_color = "blue";
 
-    fout << "\\begin{tabular}{l@{}";
+    fout << "\\begin{tabular}{l";
     for(size_t i = 0; i < rp; i++)
         fout << "c@{}";
     fout <<"}\n";
@@ -554,8 +556,8 @@ int __main(int argc, char **argv)
         pasched::dag_printer_opt o;
         o.type = pasched::dag_printer_opt::po_hide_dep_labels;
         o.hide_dep_labels.hide_order = true;
-        o.hide_dep_labels.hide_virt = true;
-        o.hide_dep_labels.hide_phys = true;
+        o.hide_dep_labels.hide_virt = false;
+        o.hide_dep_labels.hide_phys = false;
         opts.push_back(o);
     }
     if(formats[to].write != 0)
