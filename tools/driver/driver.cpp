@@ -165,6 +165,7 @@ void chain_analysis_write(const pasched::schedule_dag& dag, const pasched::sched
     std::map< size_t, bool > color_switch;
 
     const std::string __color[2] = {"red", "green"};
+    const std::string irp_color = "blue";
 
     fout << "\\begin{tabular}{l@{}";
     for(size_t i = 0; i < rp; i++)
@@ -182,6 +183,30 @@ void chain_analysis_write(const pasched::schedule_dag& dag, const pasched::sched
             alive[0].push_back(rev_reg_map.find(j) != rev_reg_map.end());
             color[0].push_back(__color[color_switch[j]]);
         }
+        /* printing */
+        std::string str = chain.get_unit_at(i)->to_string();
+        size_t nb_lines = std::count(str.begin(), str.end(), '\n') + 1;
+        size_t irp = chain.get_unit_at(i)->internal_register_pressure();
+        size_t real_nb_lines;
+
+        if(irp == 0)
+            real_nb_lines = nb_lines + (nb_lines % 2); /* have even number of lines */
+        else
+            real_nb_lines = std::max(size_t(3), nb_lines + 1 - (nb_lines % 2)); /* have odd number of lines */
+
+        fout << "\\multirow{" << real_nb_lines << "}*{" << render_instruction(str) << "}";
+
+        for(size_t rep = 0; rep < real_nb_lines / 2; rep++)
+        {
+            for(size_t j = 0; j < rp; j++)
+            {
+                fout << "&";
+                if(!alive[0][j])
+                    continue;
+                fout << "\\multicolumn{1}{@{}>{\\columncolor{" << color[0][j] << "}[0pt]}m{1ex}@{}}{}\\enskip";
+            }
+            fout << "\\\\\n";
+        }
         /* kill registers */
         for(size_t j = 0; j < dag.get_preds(unit).size(); j++)
         {
@@ -197,6 +222,35 @@ void chain_analysis_write(const pasched::schedule_dag& dag, const pasched::sched
                 rev_reg_map.erase(reg_map[dep.reg()]);
                 reg_map.erase(dep.reg());
             }
+        }
+        /* IRP + printing */
+        if(irp != 0)
+        {
+            /* allocate internal registers */
+            std::vector< size_t > added;
+            for(size_t j = 0; j < rp && irp > 0; j++)
+            {
+                if(rev_reg_map.find(j) == rev_reg_map.end())
+                {
+                    rev_reg_map[j] = 0;
+                    added.push_back(j);
+                    alive[0][j] = true;
+                    color[0][j] = irp_color;
+                    irp--;
+                }
+            }
+            /* printing */
+            for(size_t j = 0; j < rp; j++)
+            {
+                fout << "&";
+                if(!alive[0][j])
+                    continue;
+                fout << "\\multicolumn{1}{@{}>{\\columncolor{" << color[0][j] << "}[0pt]}m{1ex}@{}}{}\\enskip";
+            }
+            fout << "\\\\\n";
+            /* cleanup */
+            for(size_t j = 0; j < added.size(); j++)
+                rev_reg_map.erase(added[j]);
         }
         /* create registers */
         for(size_t j = 0; j < dag.get_succs(unit).size(); j++)
@@ -223,25 +277,16 @@ void chain_analysis_write(const pasched::schedule_dag& dag, const pasched::sched
             color[1].push_back(__color[color_switch[j]]);
         }
         /* printing */
-        std::string str = chain.get_unit_at(i)->to_string();
-        size_t nb_lines = std::count(str.begin(), str.end(), '\n') + 1;
-        size_t real_nb_lines = nb_lines + (nb_lines % 2);
-        
-        fout << "\\multirow{" << real_nb_lines << "}*{" << render_instruction(str) << "}";
-
-        for(size_t k = 0; k < 2; k++)
+        for(size_t rep = 0; rep < real_nb_lines / 2; rep++)
         {
-            for(size_t rep = 0; rep < real_nb_lines / 2; rep++)
+            for(size_t j = 0; j < rp; j++)
             {
-                for(size_t j = 0; j < rp; j++)
-                {
-                    fout << "&";
-                    if(!alive[k][j])
-                        continue;
-                    fout << "\\multicolumn{1}{@{}>{\\columncolor{" << color[k][j] << "}[0pt]}m{1ex}@{}}{}\\enskip";
-                }
-                fout << "\\\\\n";
+                fout << "&";
+                if(!alive[1][j])
+                    continue;
+                fout << "\\multicolumn{1}{@{}>{\\columncolor{" << color[1][j] << "}[0pt]}m{1ex}@{}}{}\\enskip";
             }
+            fout << "\\\\\n";
         }
         fout << "\\hline";
     }
