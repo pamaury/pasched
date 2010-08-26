@@ -1,0 +1,17 @@
+Unit 0x1f98dc0 Name CopyToReg\
+    JNE_4
+Unit 0x1f8f780 Name CMP32mi8<Mem:LD4[@a]>
+To 0x1f98dc0 Latency 1 Kind phys Reg 42
+Unit Extra1 Name MOV32ri\
+MOV32ri\
+CopyToReg\
+CMOVE32rr
+To 0x1f8f780 Latency 1 Kind order
+Unit 0x1f919e0 Name CopyToReg\
+SETNEr
+To Extra2 Latency 1 Kind data Reg 0
+Unit 0x1f8d1e0 Name CMP32mi8<Mem:LD4[@b]>
+To 0x1f919e0 Latency 1 Kind phys Reg 42
+To Extra1 Latency 1 Kind phys Reg 42
+Unit Extra2 Name CopyToReg
+To 0x1f98dc0 Latency 1 Kind order

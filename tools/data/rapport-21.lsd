@@ -1,0 +1,14 @@
+Unit A Name a
+To D Latency 1 Kind order
+Unit B Name b
+To D Latency 1 Kind data Reg 0
+Unit C Name c
+To D Latency 1 Kind phys Reg 1
+Unit D Name v
+To E Latency 1 Kind order
+To F Latency 1 Kind data Reg 2
+To G Latency 1 Kind data Reg 3
+Unit E Name e
+Unit F Name f
+To G Latency 1 Kind order
+Unit G Name g

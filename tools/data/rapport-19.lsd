@@ -1,0 +1,25 @@
+Unit U Name U
+To V Latency 1 Kind data Reg 1
+To V1 Latency 1 Kind data Reg 0
+To ... Latency 1 Kind data Reg 0
+To Vn Latency 1 Kind data Reg 0
+Unit V1 Name V1
+Unit ... Name ...
+Unit Vn Name Vn
+Unit V Name V
+To V1 Latency 1 Kind order
+To ... Latency 1 Kind order
+To Vn Latency 1 Kind order
+
+Unit A Name A
+To B Latency 1 Kind data Reg 0
+To B1 Latency 1 Kind data Reg 0
+To ...' Latency 1 Kind data Reg 0
+To Bn Latency 1 Kind data Reg 0
+Unit B1 Name B1
+Unit ...' Name ...
+Unit Bn Name Bn
+Unit B Name B
+To B1 Latency 1 Kind order
+To ...' Latency 1 Kind order
+To Bn Latency 1 Kind order

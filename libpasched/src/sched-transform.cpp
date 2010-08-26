@@ -1145,6 +1145,7 @@ void break_symmetrical_branch_merge::transform(schedule_dag& dag, const schedule
          *    a) either be used by all V_i
          *    b) either be used by only one V_i
          * 4) The number of register created by V_i must not depend on i (constant)
+         * 5) The V_i have the same internal register pressure
          */
         const schedule_unit *unit = dag.get_units()[u];
         std::set< const schedule_unit * > succs =
@@ -1188,9 +1189,10 @@ void break_symmetrical_branch_merge::transform(schedule_dag& dag, const schedule
             /* group must not be trivial */
             if(grp.size() <= 1)
                 continue;
-            /* Check conditions 2) and 4) */
+            /* Check conditions 2), 4) and 5) */
             size_t nb_input_regs = 0;
             size_t nb_ouput_regs = 0;
+            size_t irp = 0;
             for(it = grp.begin(); it != grp.end(); ++it)
             {
                 size_t cnt = dag.get_reg_use(*it).size();
@@ -1203,6 +1205,11 @@ void break_symmetrical_branch_merge::transform(schedule_dag& dag, const schedule
                 if(it == grp.begin())
                     nb_ouput_regs = cnt;
                 else if(nb_ouput_regs != cnt)
+                    goto Lnext_group;
+
+                if(it == grp.begin())
+                    irp = (*it)->internal_register_pressure();
+                else if(irp != (*it)->internal_register_pressure())
                     goto Lnext_group;
             }
             /* Check condition 3) */

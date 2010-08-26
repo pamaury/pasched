@@ -502,8 +502,7 @@ int __main(int argc, char **argv)
     dag_accumulator accumulator;
     pipeline.add_stage(new pasched::unique_reg_ids);
     pipeline.add_stage(&after_unique_accum);
-    //pipeline.add_stage(&loop);
-    pipeline.add_stage(new pasched::simplify_order_cuts);
+    pipeline.add_stage(&loop);
     pipeline.add_stage(&accumulator);
     
     snd_stage_pipe.add_stage(new pasched::strip_dataless_units);
@@ -560,7 +559,10 @@ int __main(int argc, char **argv)
         opts.push_back(o);
     }
     if(formats[to].write != 0)
+    {
         formats[to].write(accumulator.get_dag(), argv[4], opts);
+        //formats[to].write(accumulator.get_dag(), (std::string(argv[4]) + ".pdf").c_str(), opts);
+    }
     if(formats[to].chain_write != 0)
         formats[to].chain_write(after_unique_accum.get_dag(), chain, argv[4], opts);
     TM_STOP(dtm_write)
