@@ -47,8 +47,8 @@ namespace PAMAURY_SCHEDULER_NS
     for(size_t i = __debug_old_size; i < chain.get_unit_count(); i++) \
         assert(container_contains(__debug_units, chain.get_unit_at(i)));
 #else
-#define DEBUG_CHECK_BEGIN_X(dag, chain)
-#define DEBUG_CHECK_END_X(chain)
+#define DEBUG_CHECK_BEGIN_X(dag, chain) schedule_dag *__cpy = dag.dup();
+#define DEBUG_CHECK_END_X(chain) delete __cpy;
 #endif
 
 namespace PAMAURY_SCHEDULER_NS
@@ -665,8 +665,6 @@ void smart_fuse_two_units::transform(schedule_dag& dag, const scheduler& s, sche
         
         Lgraph_changed:
         modified = true;
-        if(fused.size() == 1)
-            break;
     }
 
     XTM_FW_STOP(smart_fuse_two_units)
@@ -750,6 +748,7 @@ bool smart_fuse_two_units::weak_fuse(schedule_dag& dag, const schedule_unit *a, 
  * simplify_order_cuts
  */
 XTM_FW_DECLARE(simplify_order_cuts)
+XTM_BW_DECLARE(simplify_order_cuts)
 
 simplify_order_cuts::simplify_order_cuts()
 {
@@ -759,82 +758,157 @@ simplify_order_cuts::~simplify_order_cuts()
 {
 }
 
+namespace
+{
+    enum visit_state_t
+    {
+        vs_not_processed,
+        vs_processing,
+        vs_processed
+    };
+
+    const schedule_unit *collapse_order_cycles(
+        disjoint_set< const schedule_unit * >& uf,
+        std::map< const schedule_unit *, std::set< const schedule_unit * > >& order_deps,
+        schedule_dag& dag,
+        std::map< const schedule_unit *, visit_state_t >& state,
+        const schedule_unit *u)
+    {
+        if(state[u] == vs_processed)
+            return 0;
+        if(state[u] == vs_processing)
+            return u;
+        state[u] = vs_processing;
+
+        std::set< const schedule_unit * >::iterator it;
+        for(it = order_deps[u].begin(); it != order_deps[u].end(); ++it)
+        {
+            const schedule_unit *ret = collapse_order_cycles(uf, order_deps, dag, state, *it);
+            if(ret == 0)
+                continue;
+            uf.merge(u, ret);
+            return ret;
+        }
+
+        state[u] = vs_processed;
+        return 0;
+    }
+    
+    bool collapse_order_cycles(
+        disjoint_set< const schedule_unit * >& uf,
+        schedule_dag& dag)
+    {
+        std::map< const schedule_unit *, visit_state_t > state;
+        std::map< const schedule_unit *, std::set< const schedule_unit * > > order_deps;
+
+        for(size_t i = 0; i < dag.get_deps().size(); i++)
+        {
+            const schedule_dep& d = dag.get_deps()[i];
+            if(!d.is_order())
+                continue;
+            if(uf.find(d.from()) != uf.find(d.to()))
+                order_deps[uf.find(d.from())].insert(uf.find(d.to()));
+        }
+
+        for(size_t i = 0; i < dag.get_units().size(); i++)
+            if(collapse_order_cycles(uf, order_deps, dag, state, uf.find(dag.get_units()[i])) != 0)
+                return true;
+        return false;
+    }
+}
+
 void simplify_order_cuts::transform(schedule_dag& dag, const scheduler& s, schedule_chain& c,
     transformation_status& status) const
 {
     DEBUG_CHECK_BEGIN_X(dag, c)
     XTM_FW_START(simplify_order_cuts)
-    do_transform(dag, s, c, status, 0);
-    XTM_FW_STOP(simplify_order_cuts)
-    DEBUG_CHECK_END_X(c)
-}
 
-void simplify_order_cuts::do_transform(schedule_dag& dag, const scheduler& s, schedule_chain& c,
-    transformation_status& status, int level) const
-{
-    if(level == 0)
+    /* compute a companion graph where nodes are connected components w.r.t data
+     * deps and edges are order deps */
+    disjoint_set< const schedule_unit * > uf(dag.get_units());
+
+    for(size_t i = 0; i < dag.get_deps().size(); i++)
     {
-        debug() << "---> simplify_order_cuts::transform\n";
-        status.begin_transformation();
-    }
-    
-    for(size_t u = 0; u < dag.get_units().size(); u++)
-    {
-        /* pick the first unit */
-        const schedule_unit *unit = dag.get_units()[u];
-        /* Compute the largest component C which
-         * contains U and which is stable by these operations:
-         * 1) If A is in C and A->B is a data dep, B is in C
-         * 2) If A is in C and B->A is a data dep, B is in C
-         * 2) If A is in C and B->A is an order dep, B is in C
-         */
-        std::set< const schedule_unit * > reach = dag.get_reachable(unit,
-            schedule_dag::rf_include_unit | schedule_dag::rf_follow_preds | schedule_dag::rf_follow_succs_data);
-
-        /* handle trivial case where the whole graph is reachable */
-        if(reach.size() == dag.get_units().size())
-            continue;
-
-        /* extract this subgraph for further analysis */
-        schedule_dag *top = dag.dup_subgraph(reach);
-        dag.remove_units(set_to_vector(reach));
-
-        if(level == 0)
-        {
-            status.set_modified_graph(true);
-            status.set_junction(true); /* don't set deadlock then ! */
-        }
-        /* recursively transform top */
-        do_transform(*top, s, c, status, level + 1);
-        /* and then bottom */
-        do_transform(dag, s, c, status, level + 1);
-
-        if(level == 0)
-        {
-            status.end_transformation();
-            debug() << "<--- simplify_order_cuts::transform\n";
-        }
-        return;
+        const schedule_dep& d = dag.get_deps()[i];
+        if(d.is_data())
+            uf.merge(d.from(), d.to());
     }
 
-    if(level == 0)
+    /* Collapse all cycles */
+    while(collapse_order_cycles(uf, dag))
+    {
+    }
+
+    /* build reduced dag */
+    std::map< const schedule_unit *, std::set< const schedule_unit * > > sets;
+    for(size_t i = 0; i < dag.get_units().size(); i++)
+        sets[uf.find(dag.get_units()[i])].insert(dag.get_units()[i]);
+
+    /* special trivial case where there is not cut */
+    if(sets.size() == 1)
     {
         status.set_modified_graph(false);
         status.set_deadlock(false);
         status.set_junction(false);
+
+        XTM_FW_STOP(simplify_order_cuts)
+
+        s.schedule(dag, c);
+        
+        DEBUG_CHECK_END_X(c)
+        return;
+    }
+
+    /* otherwise do some work */
+    status.set_modified_graph(true);
+    status.set_deadlock(false);
+    status.set_junction(true);
+
+    std::map< const schedule_unit *, std::set< const schedule_unit * > >::iterator it;
+    for(it = sets.begin(); it != sets.end(); ++it)
+    {
+        //std::cout << "  " << it->second << "\n";
+        /* schedule each subgraph */
+        schedule_dag *sub = dag.dup_subgraph(it->second);
+        generic_schedule_chain gsc;
+
+        XTM_FW_STOP(simplify_order_cuts)
+        
+        s.schedule(*sub, gsc);
+
+        XTM_FW_START(simplify_order_cuts)
+        
+        /* create a chain unit and collapse in the reduced sub graph */
+        chain_schedule_unit *csu = new chain_schedule_unit;
+        csu->get_chain() = gsc.get_units();
+        csu->set_internal_register_pressure(c.compute_rp_against_dag(*sub));
+
+        dag.collapse_subgraph(it->second, csu);
+        /* release memory */
+        delete sub;
     }
 
     XTM_FW_STOP(simplify_order_cuts)
-    /* otherwise, schedule the whole graph */
-    s.schedule(dag, c);
 
-    XTM_FW_START(simplify_order_cuts)
+    /* Schedule the reduced graph with the rand scheduler because there are only
+     * order deps. We can't schedule with s otherwise we'll loop */
+    generic_schedule_chain gsc;
+    rand_scheduler rs;
+    rs.schedule(dag, gsc);
+    
+    XTM_BW_START(simplify_order_cuts)
 
-    if(level == 0)
+    /* expand back chain units */
+    for(size_t i = 0; i < gsc.get_unit_count(); i++)
     {
-        status.end_transformation();
-        debug() << "<--- simplify_order_cuts::transform\n";
+        const chain_schedule_unit *csu = static_cast< const chain_schedule_unit * >(gsc.get_unit_at(i));
+        c.insert_units_at(c.get_unit_count(), csu->get_chain());
+        delete csu;
     }
+
+    XTM_BW_STOP(simplify_order_cuts)
+    
+    DEBUG_CHECK_END_X(c)
 }
 
 /**
@@ -1528,6 +1602,33 @@ strip_dataless_units::~strip_dataless_units()
 {
 }
 
+namespace
+{
+    void split_cc_and_schedule(const scheduler& s, schedule_dag& dag, schedule_chain& c, transformation_status& status)
+    {
+        while(dag.get_units().size() > 0)
+        {
+            /* get reachable set of the first root */
+            std::set< const schedule_unit * > set =
+                dag.get_reachable(dag.get_roots()[0],
+                    schedule_dag::rf_follow_preds | schedule_dag::rf_follow_succs | schedule_dag::rf_include_unit);
+            /* stop if it's the entire graph */
+            if(set.size() == dag.get_units().size())
+                break;
+            /* extract subgraph */
+            status.set_modified_graph(true);
+            status.set_junction(true);
+            
+            schedule_dag *sub = dag.dup_subgraph(set);
+            s.schedule(*sub, c);
+            delete sub;
+            /* delete from the graph */
+            dag.remove_units(set_to_vector(set));
+        }
+        s.schedule(dag, c);
+    }
+}
+
 void strip_dataless_units::transform(schedule_dag& dag, const scheduler& s, schedule_chain& c,
     transformation_status& status) const
 {
@@ -1609,7 +1710,8 @@ void strip_dataless_units::transform(schedule_dag& dag, const scheduler& s, sche
     status.set_modified_graph(stripped.size() > 0);
     status.set_deadlock(false);
     status.set_junction(false);
-    s.schedule(dag, c);
+
+    split_cc_and_schedule(s, dag, c, status);
 
     XTM_BW_START(strip_dataless_units)
 

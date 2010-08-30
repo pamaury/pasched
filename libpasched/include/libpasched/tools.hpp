@@ -6,10 +6,67 @@
 #include <functional>
 #include <string>
 #include <set>
+#include <map>
 #include <iostream>
 
 namespace PAMAURY_SCHEDULER_NS
 {
+
+/* Union-Find structure */
+template< typename T >
+class disjoint_set
+{
+    public:
+    disjoint_set() {}
+    template< typename U >
+    disjoint_set(const U& u) { set_elements(u); }
+    template< typename U >
+    disjoint_set(const U& begin, const U& end) { set_elements(begin, end); }
+
+    template< typename U >
+    void set_elements(const U& u) { set_elements(u.begin(), u.end()); }
+
+    template< typename U >
+    void set_elements(U begin, U end)
+    {
+        m_parent.clear();
+        m_height.clear();
+        while(begin != end)
+        {
+            m_parent[*begin] = *begin;
+            m_height[*begin] = 1;
+            ++begin;
+        }
+    }
+
+    void merge(const T& _a, const T& _b)
+    {
+        T a = find(_a);
+        T b = find(_b);
+
+        if(m_height[a] < m_height[b])
+            m_parent[a] = b;
+        else if(m_height[a] > m_height[b])
+            m_parent[b] = a;
+        else
+        {
+            m_parent[a] = b;
+            m_height[a]++;
+        }
+    }
+
+    T find(const T& a) const
+    {
+        if(m_parent[a] == a)
+            return a;
+        m_parent[a] = find(m_parent[a]);
+        return m_parent[a];
+    }
+
+    protected:
+    mutable std::map< T, T > m_parent;
+    std::map< T, size_t > m_height;
+};
 
 template<typename T>
 std::ostream& operator<<(std::ostream& os, const std::set< T >& s)

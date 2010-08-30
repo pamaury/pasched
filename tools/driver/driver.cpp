@@ -502,8 +502,7 @@ int __main(int argc, char **argv)
     dag_accumulator accumulator;
     pipeline.add_stage(new pasched::unique_reg_ids);
     pipeline.add_stage(&after_unique_accum);
-    //pipeline.add_stage(&loop);
-    pipeline.add_stage(new pasched::simplify_order_cuts);
+    pipeline.add_stage(&loop);
     pipeline.add_stage(&accumulator);
     
     snd_stage_pipe.add_stage(new pasched::strip_dataless_units);
@@ -572,7 +571,7 @@ int __main(int argc, char **argv)
 
     TM_STOP(dtm_total)
 
-    #if 1
+    #if 0
     if(pasched::time_stat::get_time_stat_count() != 0)
     {
         std::cout << "Time statistics:\n";

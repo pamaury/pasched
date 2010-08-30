@@ -257,10 +257,6 @@ class simplify_order_cuts : public transformation
 
     virtual void transform(schedule_dag& d, const scheduler& s, schedule_chain& c,
         transformation_status& status) const;
-
-    protected:
-    void do_transform(schedule_dag& d, const scheduler& s, schedule_chain& c,
-        transformation_status& status, int level) const;
 };
 
 /**

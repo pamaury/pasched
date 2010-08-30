@@ -116,6 +116,8 @@ class schedule_unit
     virtual unsigned internal_register_pressure() const = 0;
 };
 
+std::ostream& operator<<(std::ostream& os, const schedule_unit *u);
+
 class chain_schedule_unit : public schedule_unit
 {
     public:

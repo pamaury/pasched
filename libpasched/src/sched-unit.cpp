@@ -27,6 +27,11 @@ schedule_unit::~schedule_unit()
 {
 }
 
+std::ostream& operator<<(std::ostream& os, const schedule_unit *u)
+{
+    return os << u->to_string();
+}
+
 /**
  * chain_schedule_unit
  */
