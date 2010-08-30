@@ -29,21 +29,13 @@ class LLVMScheduleUnit;
 
 class PaScheduleDAG : public ScheduleDAGSDNodes
 {
-private:
-    /// HazardRec - The hazard recognizer to use.
-    ScheduleHazardRecognizer *HazardRec;
-
 public:
-    PaScheduleDAG(MachineFunction &mf,
-                  ScheduleHazardRecognizer *HR)
-        : ScheduleDAGSDNodes(mf), HazardRec(HR)
+    PaScheduleDAG(MachineFunction &mf)
+        : ScheduleDAGSDNodes(mf)
     {
     }
 
-    ~PaScheduleDAG()
-    {
-        delete HazardRec;
-    }
+    ~PaScheduleDAG();
 
     void Schedule();
 
@@ -77,6 +69,19 @@ private:
     bool ForceUnitLatencies() const { return true; }
 
     std::set< SUnit * > m_units_to_ignore;
+
+    struct dag_stat_t
+    {
+        size_t nodes, edges;
+    };
+
+    struct stat_t
+    {
+        dag_stat_t in;
+        std::vector< dag_stat_t > outs;
+    };
+
+    std::vector< stat_t > m_stats;
 };
 
 class LLVMScheduleUnitBase : public pasched::schedule_unit
@@ -216,6 +221,35 @@ class dag_accumulator : public pasched::transformation
      * we want to accumulate DAGs scheduled so we keep a mutable var */
     mutable pasched::generic_schedule_dag m_dag;
     bool m_deep;
+};
+
+class dag_stat : public pasched::transformation
+{
+    public:
+    dag_stat() {}
+    virtual ~dag_stat() {}
+
+    virtual void transform(pasched::schedule_dag& dag, const pasched::scheduler& s, pasched::schedule_chain& c,
+        pasched::transformation_status& status) const
+    {
+        status.begin_transformation();
+        status.set_modified_graph(false);
+        status.set_junction(false);
+        status.set_deadlock(false);
+
+        m_stats.push_back(std::make_pair(dag.get_units().size(), dag.get_deps().size()));
+        /* forward */
+        s.schedule(dag, c);
+
+        status.end_transformation();
+    }
+
+    std::vector< std::pair< size_t, size_t > >& get_stats() { return m_stats; }
+
+    protected:
+    /* Little hack here. A transformation is not supposed to keep internal state but here
+     * we want to accumulate DAGs scheduled so we keep a mutable var */
+    mutable std::vector< std::pair< size_t, size_t > > m_stats;
 };
 
 std::set< pasched::schedule_dep::reg_t > PaScheduleDAG::ComputeClobberRegs(SUnit *SU)
@@ -486,9 +520,21 @@ bool PaScheduleDAG::HandlePhysRangeUnitConflicts(
         std::set< pasched::schedule_dep::reg_t > regs = uu->get_clobber_regs();
         std::set< pasched::schedule_dep::reg_t >::iterator it;
         for(it = regs.begin(); it != regs.end(); ++it)
+        {
             /* only consider phys regs in dependencies */
-            if(phys_regs.find(*it) != phys_regs.end())
+            if(phys_regs.find(*it) == phys_regs.end())
+                continue;
+            /* and only consider units which don't have a successor for this physical dep */
+            bool has_dep = false;
+            for(size_t j = 0; j < dag.get_succs(unit).size(); j++)
+            {
+                const pasched::schedule_dep& dep = dag.get_succs(unit)[j];
+                if(dep.is_phys() && dep.reg() == *it)
+                    has_dep = true;
+            }
+            if(!has_dep)
                 clobbering_map[*it].push_back(unit);
+        }
     }
     /* loop through each register */
     std::set< pasched::schedule_dep::reg_t >::iterator rit;
@@ -632,16 +678,20 @@ bool PaScheduleDAG::HandlePhysRangeUnitConflicts(
                 }
                 /* now clone the creator */
                 /* clone */
-                debug_view_dag(dag);
+                outs() << "creator: " << creator->to_string() << "\n";
+                outs() << "cutter: " << cutter->to_string() << "\n";
+                for(size_t j = 0; j < tricky_units.size(); j++)
+                    outs() << "tricky: " << tricky_units[j]->to_string() << "\n";
                 assert(CloneInstruction(su_creator, vector_to_set(tricky_units), su_name_map) && "can't clone");
-                viewGraph();
                 /* return now, there is probably more work to do */
                 return true;
             }
         }
         /* if the graph was modified so far, stop here */
         if(graph_modified)
+        {
             return true;
+        }
         /* consider each creator and see if there a unit with implicit defs
          * which is clobbering this register in a way that it makes it unschedulable.
          * Also compute the converse, that is, if we are sure this unit does not
@@ -834,6 +884,7 @@ bool PaScheduleDAG::HandlePhysRangeRangeConflicts(
         /* FIXME: implement copy */
         if(dest_rc)
         {
+            PRINT = true;
             SUnit *new_def = CloneInstruction(su_a, tricky_units, su_name_map);
             if(new_def)
                 return true;
@@ -905,7 +956,8 @@ void PaScheduleDAG::BuildPaSchedGraph(pasched::schedule_dag& dag)
 {
     m_units_to_ignore.clear();
     std::set< std::pair< const pasched::schedule_unit *, pasched::schedule_dep::reg_t > > unsafe_clobbering;
-    
+
+    PRINT = false;
     while(true)
     {
         std::map< SUnit *, const LLVMScheduleUnit * > map;
@@ -973,7 +1025,6 @@ void PaScheduleDAG::Schedule()
     /* iterate as long as the current phys reg layout prevents a valid scheduling
      * and solve them with duplication or cross class copies */
     BuildPaSchedGraph(dag);
-    //debug_view_dag(dag);
 
     /* build the transformation pipeline */
     pasched::transformation_pipeline pipeline;
@@ -981,10 +1032,12 @@ void PaScheduleDAG::Schedule()
     pasched::transformation_loop loop(&snd_stage_pipe);
     dag_accumulator after_unique_acc(false);
     dag_accumulator before_schedule_acc(true);
+    dag_stat stat;
     pipeline.add_stage(new pasched::unique_reg_ids);
     pipeline.add_stage(&after_unique_acc);
     pipeline.add_stage(&loop);
     pipeline.add_stage(&before_schedule_acc);
+    pipeline.add_stage(&stat);
     
     snd_stage_pipe.add_stage(new pasched::strip_dataless_units);
     snd_stage_pipe.add_stage(new pasched::strip_useless_order_deps);
@@ -1003,7 +1056,7 @@ void PaScheduleDAG::Schedule()
     pasched::glued_transformation_scheduler fallback_sched(&fallback_accum, &basic_sched, dummy_status);
     #if 0
     pasched::mris_ilp_scheduler sched(&fallback_sched, 10000, true);
-    #elif 1
+    #elif 0
     pasched::exp_scheduler sched(&fallback_sched, 10000, false);
     #elif 1
     pasched::simple_rp_scheduler sched;
@@ -1043,20 +1096,56 @@ void PaScheduleDAG::Schedule()
     }
     assert(Sequence.size() + dead_nodes == SUnits.size() && "Invalid output schedule sequence size");
 
-    /* output hard dag if any */
-    if(after_unique_acc.get_dag().get_units().size() > 100 && false)
-    {
-        srand(time(NULL));
-        std::string str;
-        raw_string_ostream buffer(str);
-        buffer << "dag_%" << rand() << rand() << ".lsd";
-        buffer.flush();
-        dump_schedule_dag_to_lsd_file(after_unique_acc.get_dag(), str.c_str());
+    /* Stat */
+    stat_t s;
+    s.in.nodes = after_unique_acc.get_dag().get_units().size();
+    s.in.edges = after_unique_acc.get_dag().get_deps().size();
 
-        // FIXME: ugly output, should use llvm system
-        llvm::outs() << "Output hard DAG to " << str << "\n";
+    for(size_t i = 0; i < stat.get_stats().size(); i++)
+    {
+        dag_stat_t ds;
+        ds.nodes = stat.get_stats()[i].first;
+        ds.edges = stat.get_stats()[i].second;
+        s.outs.push_back(ds);
     }
+    m_stats.push_back(s);
 }
+
+PaScheduleDAG::~PaScheduleDAG()
+{
+    {
+        std::string error;
+        raw_fd_ostream of("stat.txt", error, raw_fd_ostream::F_Append);
+        if(error.empty())
+        {
+            for(size_t i = 0; i < m_stats.size(); i++)
+            {
+                of << m_stats[i].in.nodes << " " << m_stats[i].in.edges;
+                for(size_t j = 0; j < m_stats[i].outs.size(); j++)
+                    of << " " << m_stats[i].outs[j].nodes << " " << m_stats[i].outs[j].edges;
+                of << "\n";
+            }
+            of.close();
+        }
+    }
+
+    #if 0
+    if(pasched::time_stat::get_time_stat_count() != 0)
+    {
+        std::string error;
+        raw_fd_ostream of("time-stat.txt", error, raw_fd_ostream::F_Append);
+        for(size_t i = 0; i < pasched::time_stat::get_time_stat_count(); i++)
+        {
+            pasched::time_stat *ts = pasched::time_stat::get_time_stat_by_index(i);
+            double time = (double)ts->get_timer().get_value() / (double)ts->get_timer().get_hz();
+            
+            of << "  " << ts->get_name() << ": " << time << "\n";
+            ts->get_timer().reset();
+        }
+    }
+    #endif
+}
+
 
 /**
  * Misc
@@ -1067,7 +1156,7 @@ namespace llvm
     ScheduleDAGSDNodes *
     createPaDAGScheduler(SelectionDAGISel *IS, CodeGenOpt::Level)
     {
-        return new PaScheduleDAG(*IS->MF, IS->CreateTargetHazardRecognizer());
+        return new PaScheduleDAG(*IS->MF);
     }
 }
 
