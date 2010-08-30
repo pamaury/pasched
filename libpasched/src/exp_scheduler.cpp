@@ -392,6 +392,12 @@ namespace
             }
             if(phys_prevent_sched)
                 continue;
+
+            /* mark unit as scheduled */
+            st.cache_bm.set_bit(unit);
+            /* get caching state */
+            const exp_cache_result& rec_cc = st.cache_mem[st.cache_bm];
+            
             /* remove unit from schedulables */
             unordered_vector_remove(i, st.schedulable);
             /* and add it to current schedule */
@@ -440,13 +446,9 @@ namespace
                     st.schedulable.push_back(rel);
             }
 
-            /* mark unit as scheduled */
-            st.cache_bm.set_bit(unit);
             /* schedule */
             do_schedule(st);
-            /* get caching state */
-            const exp_cache_result& rec_cc = st.cache_mem[st.cache_bm];
-            /* mark unit as scheduled */
+            /* unmark unit as scheduled */
             st.cache_bm.clear_bit(unit);
             /* don't bother if it's not valid */
             if(rec_cc.bw.valid)
@@ -462,6 +464,11 @@ namespace
                     cc.bw.achieved_rp = achieved_rp;
                     cc.bw.best_unit = unit;
                 }
+            }
+            else
+            {
+                /* if we can't get a valid entry, then we can't claim optimality */
+                cc.bw.optimal = false;
             }
 
             /* restore everything */

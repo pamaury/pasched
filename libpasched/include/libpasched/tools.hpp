@@ -139,6 +139,14 @@ std::vector< T > set_to_vector(const std::set< T >& s)
     return v;
 }
 
+template<typename T>
+std::set< T > vector_to_set(const std::vector< T >& v)
+{
+    std::set< T > s;
+    s.insert(v.begin(), v.end());
+    return s;
+}
+
 std::string trim(const std::string& s);
 
 std::ostream& debug();

@@ -125,12 +125,12 @@ std::string render_instruction(std::string str)
     std::string text;
     if(str.find("\n") != std::string::npos)
     {
-        text = "$\\begin{array}{@{}l@{}}";
+        text = "$\\begin{array}{@{}l@{}}\\hspace{0pt}";
         str = tex_escape_string(str);
         size_t pos = str.find("\n");
         while(pos != std::string::npos)
         {
-            str.replace(pos, 1, "\\\\");
+            str.replace(pos, 1, "\\\\\\hspace{0pt}");
             pos = str.find("\n");
         }
         
@@ -502,7 +502,8 @@ int __main(int argc, char **argv)
     dag_accumulator accumulator;
     pipeline.add_stage(new pasched::unique_reg_ids);
     pipeline.add_stage(&after_unique_accum);
-    pipeline.add_stage(&loop);
+    //pipeline.add_stage(&loop);
+    pipeline.add_stage(new pasched::simplify_order_cuts);
     pipeline.add_stage(&accumulator);
     
     snd_stage_pipe.add_stage(new pasched::strip_dataless_units);
@@ -518,7 +519,7 @@ int __main(int argc, char **argv)
     #if 0
     pasched::simple_rp_scheduler basic_sched;
     pasched::mris_ilp_scheduler sched(&basic_sched, 1000, true);
-    #elif 1
+    #elif 0
     pasched::simple_rp_scheduler basic_sched;
     pasched::exp_scheduler sched(&basic_sched, 5000, false);
     #else
@@ -561,7 +562,7 @@ int __main(int argc, char **argv)
     if(formats[to].write != 0)
     {
         formats[to].write(accumulator.get_dag(), argv[4], opts);
-        //formats[to].write(accumulator.get_dag(), (std::string(argv[4]) + ".pdf").c_str(), opts);
+        formats[to].write(after_unique_accum.get_dag(), (std::string(argv[4]) + ".pdf").c_str(), opts);
     }
     if(formats[to].chain_write != 0)
         formats[to].chain_write(after_unique_accum.get_dag(), chain, argv[4], opts);
@@ -571,7 +572,7 @@ int __main(int argc, char **argv)
 
     TM_STOP(dtm_total)
 
-    #if 0
+    #if 1
     if(pasched::time_stat::get_time_stat_count() != 0)
     {
         std::cout << "Time statistics:\n";
@@ -580,7 +581,7 @@ int __main(int argc, char **argv)
             pasched::time_stat *ts = pasched::time_stat::get_time_stat_by_index(i);
             double time = (double)ts->get_timer().get_value() / (double)ts->get_timer().get_hz();
             
-            std::cout << "  " << ts->get_name() << ": " << time << " sec\n";
+            std::cout << "  " << ts->get_name() << ": " << time << "\n";
         }
     }
     

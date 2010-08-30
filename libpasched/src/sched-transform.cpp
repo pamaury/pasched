@@ -7,6 +7,7 @@
 #include <cassert>
 #include <algorithm>
 #include <iostream>
+#include <lsd.hpp>
 
 #if 0
 namespace PAMAURY_SCHEDULER_NS
@@ -664,6 +665,8 @@ void smart_fuse_two_units::transform(schedule_dag& dag, const scheduler& s, sche
         
         Lgraph_changed:
         modified = true;
+        if(fused.size() == 1)
+            break;
     }
 
     XTM_FW_STOP(smart_fuse_two_units)
@@ -703,6 +706,15 @@ void smart_fuse_two_units::transform(schedule_dag& dag, const scheduler& s, sche
     }
 
     #ifdef ENABLE_XFORM_AUTO_CHECK_RP
+    /*
+    if(rp != c.compute_rp_against_dag(*init_dag_cpy))
+    {
+        debug_view_dag(*init_dag_cpy);
+        dump_schedule_dag_to_lsd_file(*init_dag_cpy, "a.lsd");
+        debug_view_dag(*dag_cpy);
+        dump_schedule_dag_to_lsd_file(*dag_cpy, "b.lsd");
+    }
+    */
     assert(rp == c.compute_rp_against_dag(*init_dag_cpy) && "smart_fuse_two_units did not preserve register pressure as expected");
     delete init_dag_cpy;
     #endif

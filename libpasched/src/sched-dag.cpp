@@ -318,7 +318,7 @@ chain_schedule_unit *schedule_dag::fuse_units(const schedule_unit *a,
     std::set< schedule_dep::reg_t > vdd = get_reg_dont_destroy_exact(b);
 
     std::set< schedule_dep::reg_t > vu_min_vc_min_vdd = set_minus(set_minus(vu, vc), vdd);
-    std::set< schedule_dep::reg_t > vu_plus_vc_min_vdd = set_minus(set_union(vu, vc), vdd);
+    std::set< schedule_dep::reg_t > vu_plus__p_vc_min_vdd_p = set_union(vc, set_minus(vu, vdd));
     std::set< schedule_dep::reg_t > vc_min_vd = set_minus(vc, vd);
 
     /* Check for phys deps hiding */
@@ -436,7 +436,7 @@ chain_schedule_unit *schedule_dag::fuse_units(const schedule_unit *a,
 
     c->set_internal_register_pressure(
         std::max(a->internal_register_pressure() + vu_min_vc_min_vdd.size(),
-        std::max(vu_plus_vc_min_vdd.size(),
+        std::max(vu_plus__p_vc_min_vdd_p.size(),
                 b->internal_register_pressure() + vc_min_vd.size())));
 
     #if 0

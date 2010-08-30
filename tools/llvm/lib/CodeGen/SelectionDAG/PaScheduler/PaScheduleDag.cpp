@@ -13,6 +13,7 @@
 #include "llvm/ADT/PriorityQueue.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/Statistic.h"
+#include "llvm/InlineAsm.h"
 #include <climits>
 #include <cstdio>
 #include <map>
@@ -223,6 +224,37 @@ std::set< pasched::schedule_dep::reg_t > PaScheduleDAG::ComputeClobberRegs(SUnit
     /* FIXME doesn't handle inline asm ? */
     for(SDNode *Node = SU->getNode(); Node; Node = Node->getFlaggedNode())
     {
+        if (Node->getOpcode() == ISD::INLINEASM)
+        {
+            unsigned NumOps = Node->getNumOperands();
+            if(Node->getOperand(NumOps - 1).getValueType() == MVT::Flag)
+                --NumOps;  // Ignore the flag operand.
+
+            for(unsigned i = InlineAsm::Op_FirstOperand; i != NumOps;)
+            {
+                unsigned Flags = cast<ConstantSDNode>(Node->getOperand(i))->getZExtValue();
+                unsigned NumVals = InlineAsm::getNumOperandRegisters(Flags);
+
+                ++i; // Skip the ID value.
+                if(InlineAsm::isRegDefKind(Flags) || InlineAsm::isRegDefEarlyClobberKind(Flags))
+                {
+                    // Check for def of register or earlyclobber register.
+                    for(; NumVals; --NumVals, ++i)
+                    {
+                        unsigned Reg = cast<RegisterSDNode>(Node->getOperand(i))->getReg();
+                        if(TargetRegisterInfo::isPhysicalRegister(Reg))
+                        {
+                            set.insert(Reg);
+                            for(const unsigned *Alias = TRI->getAliasSet(Reg); *Alias; Alias++)
+                                set.insert(*Alias);
+                        }
+                    }
+                }
+                else
+                    i += NumVals;
+            }
+            continue;
+        }
         if(!Node->isMachineOpcode())
             continue;
         const TargetInstrDesc& TID = TII->get(Node->getMachineOpcode());
@@ -488,7 +520,7 @@ bool PaScheduleDAG::HandlePhysRangeUnitConflicts(
          * this might happen with the CMOV_GR8 instruction on X86 which conservatively reports
          * itself as destroying the flags but also as using them.
          * There are basically two cases:
-         * - either one one user destroys the flags and we add dependencies from the other uses to this one
+         * - either one user destroys the flags and we add dependencies from the other uses to this one
          * - there are two or more and we clone instructions
          */
         for(size_t i = 0; i < creators.size(); i++)
@@ -498,7 +530,8 @@ bool PaScheduleDAG::HandlePhysRangeUnitConflicts(
             assert(base->is_llvm_unit() && "all units must be of kind LLVMScheduleUnit at this point too");
             const LLVMScheduleUnit *uu = static_cast< const LLVMScheduleUnit * >(base);
             SUnit *su_creator = uu->GetSU();
-                
+
+            /* partition use in two sets: the one clobbering it and the other ones */
             std::vector< const pasched::schedule_unit * > use_that_clobber;
             std::vector< const pasched::schedule_unit * > use_that_dont_clobber;
             
@@ -556,12 +589,54 @@ bool PaScheduleDAG::HandlePhysRangeUnitConflicts(
                         graph_modified = true;
                     }
                 }
-                
             }
             /* big problem ? */
             else
             {
-                assert(false);
+                /* if V_1,...,V_n are the uses that clobbers, we try to find a use V_i such there is no path
+                 * from another V_j to this V_i. There must be one because it's a DAG */
+                const pasched::schedule_unit *cutter = 0;
+
+                for(size_t j = 0; j < use_that_clobber.size(); j++)
+                {
+                    bool selectable = true;
+                    for(size_t k = 0; k < use_that_clobber.size(); k++)
+                    {
+                        if(j == k)
+                            continue;
+                        if(path[path_name_map[use_that_clobber[k]]][path_name_map[use_that_clobber[j]]])
+                        {
+                            selectable = false;
+                            break;
+                        }
+                    }
+                    if(selectable)
+                    {
+                        cutter = use_that_clobber[j];
+                        break;
+                    }
+                }
+                assert(cutter != 0 && "Can't a find a cutting node, this graph is not a valid DAG...");
+                /* now partition the use nodes: the one that can be scheduled before the cutter and the other ones... */
+                std::vector< const pasched::schedule_unit * > tricky_units;
+
+                for(size_t j = 0; j < use_that_clobber.size(); j++)
+                {
+                    if(use_that_clobber[j] != cutter)
+                        tricky_units.push_back(use_that_clobber[j]);
+                }
+                for(size_t j = 0; j < use_that_dont_clobber.size(); j++)
+                {
+                    if(path[path_name_map[cutter]][path_name_map[use_that_dont_clobber[j]]])
+                        tricky_units.push_back(use_that_dont_clobber[j]);
+                }
+                /* now clone the creator */
+                /* clone */
+                debug_view_dag(dag);
+                assert(CloneInstruction(su_creator, vector_to_set(tricky_units), su_name_map) && "can't clone");
+                viewGraph();
+                /* return now, there is probably more work to do */
+                return true;
             }
         }
         /* if the graph was modified so far, stop here */
@@ -898,6 +973,7 @@ void PaScheduleDAG::Schedule()
     /* iterate as long as the current phys reg layout prevents a valid scheduling
      * and solve them with duplication or cross class copies */
     BuildPaSchedGraph(dag);
+    //debug_view_dag(dag);
 
     /* build the transformation pipeline */
     pasched::transformation_pipeline pipeline;

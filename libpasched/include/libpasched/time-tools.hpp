@@ -51,7 +51,7 @@ class time_stat
 };
 
 #define TM_DECLARE(unique_name, name) \
-    namespace { time_stat unique_name(name); }
+    namespace { ::PAMAURY_SCHEDULER_NS::time_stat unique_name(name); }
 #define TM_START(unique_name) unique_name.get_timer().start();
 #define TM_STOP(unique_name) unique_name.get_timer().stop();
 
