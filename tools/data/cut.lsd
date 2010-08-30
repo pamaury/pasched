@@ -1,0 +1,21 @@
+Unit 0 Name 0
+To A Latency 1 Kind order
+To Z Latency 1 Kind data Reg 0
+Unit A Name A
+To C Latency 1 Kind data Reg 0
+To F Latency 1 Kind order
+Unit B Name B
+To C Latency 1 Kind data Reg 0
+To E Latency 1 Kind order
+To BC Latency 1 Kind order
+Unit BC Name BC
+To C Latency 1 Kind order
+Unit C Name C
+To Z Latency 1 Kind order
+To D Latency 1 Kind order
+Unit D Name D
+To E Latency 1 Kind data Reg 0
+Unit E Name E
+To F Latency 1 Kind order
+Unit F Name F
+Unit Z Name Z

@@ -1,0 +1,85 @@
+Unit 0x339b4f0 Name SU(0): CopyToReg [ID=0]\
+    JNE_4 [ID=0]
+Unit 0x343fd70 Name SU(1): TEST64rr [ID=1]
+To 0x339b4f0 Latency 1 Kind phys Reg 42
+To 0x2fcdf10 Latency 1 Kind phys Reg 42
+Unit 0x313b170 Name SU(2): CopyFromReg [ORD=2332] [ID=2]
+To 0x343fd70 Latency 1 Kind data Reg 0
+Unit 0x2b193b0 Name SU(3): TokenFactor [ID=3]
+To 0x339b4f0 Latency 1 Kind order
+Unit 0x2b19460 Name SU(4): MOV64mi32<Mem:ST8[%midnotes]> [ORD=2333] [ID=4]
+To 0x2b193b0 Latency 1 Kind order
+To 0x2fb27b0 Latency 1 Kind order
+To 0x32fe360 Latency 1 Kind order
+To 0x32a6000 Latency 1 Kind order
+To 0x32b6330 Latency 1 Kind order
+Unit 0x313b1c0 Name SU(5): CopyToReg [ID=5]
+To 0x2b193b0 Latency 1 Kind order
+Unit 0x2fb27b0 Name SU(6): MOV64rm<Mem:LD8[%tmp4477]> [ORD=2351] [ID=6]\
+    MOV64rm<Mem:LD8[%tmp4471]> [ORD=2349] [ID=6]
+To 0x313b1c0 Latency 1 Kind data Reg 0
+To 0x2b191f0 Latency 1 Kind data Reg 0
+Unit 0x2b19140 Name SU(7): CopyFromReg [ORD=2348] [ID=7]
+To 0x2fb27b0 Latency 1 Kind data Reg 0
+Unit 0x2b191f0 Name SU(8): CopyToReg [ID=8]
+To 0x2b193b0 Latency 1 Kind order
+Unit 0x2dbbbe0 Name SU(9): CopyToReg [ID=9]
+To 0x2b193b0 Latency 1 Kind order
+Unit 0x32fe360 Name SU(10): MOV64rm<Mem:LD8[%tmp4465]> [ORD=2347] [ID=10]\
+    MOV64rm<Mem:LD8[%tmp4459]> [ORD=2345] [ID=10]
+To 0x2dbbbe0 Latency 1 Kind data Reg 0
+To 0x2ec7d40 Latency 1 Kind data Reg 0
+Unit 0x2dd61c0 Name SU(11): CopyFromReg [ORD=2344] [ID=11]
+To 0x32fe360 Latency 1 Kind data Reg 0
+Unit 0x2ec7d40 Name SU(12): CopyToReg [ID=12]
+To 0x2b193b0 Latency 1 Kind order
+Unit 0x2ec7e70 Name SU(13): CopyToReg [ID=13]
+To 0x2b193b0 Latency 1 Kind order
+Unit 0x32b6060 Name SU(14): CopyToReg [ID=14]\
+    CMOVNE64rr [ID=14]
+To 0x2ec7e70 Latency 1 Kind data Reg 0
+Unit 0x32b6110 Name SU(15): TEST8rr [ID=15]
+To 0x32b6060 Latency 1 Kind phys Reg 42
+Unit 0x32b6250 Name SU(16): CopyToReg [ID=16]\
+    SETEr [ID=16]
+To 0x32b6110 Latency 1 Kind data Reg 0
+Unit 0x2b19280 Name SU(17): TEST32rr [ID=17]
+To 0x32b6250 Latency 1 Kind phys Reg 42
+Unit 0x2dbba70 Name SU(18): CopyFromReg [ORD=2341] [ID=18]
+To 0x2b19280 Latency 1 Kind data Reg 0
+Unit 0x2fcdf10 Name SU(19): CopyToReg [ID=19]\
+    SETNEr [ID=19]
+To 0x32b6110 Latency 1 Kind data Reg 0
+Unit 0x2fce090 Name SU(20): CopyFromReg [ORD=2343] [ID=20]
+To 0x32b6060 Latency 1 Kind data Reg 0
+Unit 0x2fce1d0 Name SU(21): MOV64r0 [ORD=2332] [ID=21]
+To 0x32b6060 Latency 1 Kind data Reg 0
+To 0x32a6000 Latency 1 Kind data Reg 0
+Unit 0x32a5f10 Name SU(22): CopyToReg [ID=22]
+To 0x2b193b0 Latency 1 Kind order
+Unit 0x32a6000 Name SU(23): CopyToReg [ID=23]\
+    CMOVNE64rm<Mem:LD8[%i2dest]> [ID=23]
+To 0x32a5f10 Latency 1 Kind data Reg 0
+Unit 0x32a61d0 Name SU(24): TEST8rr [ID=24]
+To 0x32a6000 Latency 1 Kind phys Reg 42
+Unit 0x3194540 Name SU(25): CopyToReg [ID=25]\
+    SETEr [ID=25]
+To 0x32a61d0 Latency 1 Kind data Reg 0
+Unit 0x3194670 Name SU(26): TEST32rr [ID=26]
+To 0x3194540 Latency 1 Kind phys Reg 42
+Unit 0x35dc030 Name SU(27): CopyFromReg [ORD=2337] [ID=27]
+To 0x3194670 Latency 1 Kind data Reg 0
+Unit 0x35dc150 Name SU(28): AND8rr [ID=28]
+To 0x32a61d0 Latency 1 Kind data Reg 0
+Unit 0x35dc2c0 Name SU(29): CopyToReg [ID=29]\
+    SETEr [ID=29]
+To 0x35dc150 Latency 1 Kind data Reg 0
+Unit 0x2f1c4e0 Name SU(30): TEST32rr [ID=30]
+To 0x35dc2c0 Latency 1 Kind phys Reg 42
+Unit 0x2f1c660 Name SU(31): CopyFromReg [ORD=2335] [ID=31]
+To 0x2f1c4e0 Latency 1 Kind data Reg 0
+Unit 0x2f1c790 Name SU(32): CopyToReg [ID=32]\
+    SETEr [ID=32]
+To 0x35dc150 Latency 1 Kind data Reg 0
+Unit 0x32b6330 Name SU(33): CMP64mi8<Mem:LD8[%newi2pat]> [ID=33]
+To 0x2f1c790 Latency 1 Kind phys Reg 42

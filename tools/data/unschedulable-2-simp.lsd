@@ -1,0 +1,22 @@
+Unit 0x339b4f0 Name CopyToReg\
+    JNE_4
+Unit 0x343fd70 Name TEST64rr
+To 0x339b4f0 Latency 1 Kind phys Reg 42
+To 0x2fcdf10 Latency 1 Kind phys Reg 42
+Unit 0x313b170 Name CopyFromReg
+To 0x343fd70 Latency 1 Kind data Reg 0
+Unit 0x2ec7e70 Name CopyToReg
+To 0x339b4f0 Latency 1 Kind order
+Unit 0x32b6060 Name CopyToReg\
+    CMOVNE64rr
+To 0x2ec7e70 Latency 1 Kind data Reg 0
+Unit 0x32b6110 Name TEST8rr
+To 0x32b6060 Latency 1 Kind phys Reg 42
+Unit 0x32b6250 Name CopyFromReg
+To 0x32b6110 Latency 1 Kind data Reg 0
+To 0x32b6060 Latency 1 Kind data Reg 0
+Unit 0x2fcdf10 Name CopyToReg\
+    SETNEr
+To 0x32b6110 Latency 1 Kind data Reg 0
+Unit 0x2fce090 Name CopyFromReg
+To 0x32b6060 Latency 1 Kind data Reg 0

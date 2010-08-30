@@ -560,8 +560,7 @@ int __main(int argc, char **argv)
     }
     if(formats[to].write != 0)
     {
-        formats[to].write(accumulator.get_dag(), argv[4], opts);
-        formats[to].write(after_unique_accum.get_dag(), (std::string(argv[4]) + ".pdf").c_str(), opts);
+        formats[to].write(after_unique_accum.get_dag(), argv[4], opts);
     }
     if(formats[to].chain_write != 0)
         formats[to].chain_write(after_unique_accum.get_dag(), chain, argv[4], opts);
